@@ -1,0 +1,13 @@
+[Unit]
+Description={{ .AppName }} {{ .ServiceName }} service
+Wants={{ .ServiceName }}.target
+After={{ .ServiceName }}.target
+
+[Service]
+ExecStart=/usr/local/bin/{{ .AppName }} --TBD={{ .TBD }}
+User={{ .User }}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
