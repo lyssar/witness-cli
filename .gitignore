@@ -1,0 +1,41 @@
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Binaries and build dirs
+bin/
+dist/
+build/
+coverage/
+
+# Coverage reports
+coverage.*
+*.coverprofile
+coverage.txt
+
+# Logs & temp
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# IDE/editor
+.idea/
+.vscode/
+.fleet/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+

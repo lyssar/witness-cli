@@ -11,6 +11,3 @@ Quick start
 - Build: `go build .`
 - Run: `./skuldcli` → prints "Hello from SkuldCli!"
 
-Assets
-- Place the provided 1024x1024 PNG at `assets/logo.png` to display the logo above.
-
