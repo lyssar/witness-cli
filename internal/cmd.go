@@ -1,11 +1,11 @@
-package local
+package internal
 
 import (
 	"github.com/lyssar/skuld-cli/utils"
 	"github.com/spf13/cobra"
 )
 
-func ObserveCmd(cmd *cobra.Command, args []string) error {
+func ObserveAddCmd(cmd *cobra.Command, args []string) error {
 	if err := CheckPrerequisites(cmd); err != nil {
 		return err
 	}
