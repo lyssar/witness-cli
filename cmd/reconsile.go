@@ -11,7 +11,7 @@ var reconsileCmd = &cobra.Command{
 	Short: "TBD",
 	Long:  `TBD`,
 	Args:  cobra.ExactArgs(2),
-	RunE:  internal.ObserveAddCmd,
+	RunE:  internal.ObserverAddCmd,
 }
 
 func init() {

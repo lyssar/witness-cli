@@ -20,7 +20,7 @@ Credentials and trust material are provided via environment variables (not flags
   - SKULD_SSH_PRVT_KEY     : SSH private key for Git access
   - SKULD_KNOWN_HOST_FILE  : Path to a known_hosts file for host key verification`,
 	Args: cobra.ExactArgs(2),
-	RunE: internal.ObserveAddCmd,
+	RunE: internal.ObserverAddCmd,
 }
 
 func init() {

@@ -5,21 +5,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func ObserveAddCmd(cmd *cobra.Command, args []string) error {
+func ObserverAddCmd(cmd *cobra.Command, args []string) error {
 	if err := CheckPrerequisites(cmd); err != nil {
 		return err
 	}
 
-	runSync, err := cmd.Flags().GetBool("sync")
-	utils.CheckErr(err)
-
 	observer, err := NewObserver(args[0], cmd)
 	if err != nil {
 		return err
-	}
-
-	if runSync {
-		return observer.Sync()
 	}
 
 	err = observer.Configure()
