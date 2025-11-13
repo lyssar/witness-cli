@@ -50,16 +50,6 @@ func CheckPrerequisites(cmd *cobra.Command) error {
 		missing = append(missing, "ssh")
 	}
 
-	workingPath, err := evaluateWorkingPath(cmd)
-	if err != nil {
-		slog.Debug("working-path error", "error", err.Error(), "workingPath", workingPath)
-		missing = append(missing, "working-path not set or not existing")
-	}
-
-	if !isFolderFeasable(workingPath) {
-		missing = append(missing, fmt.Sprintf("working-path is not a folder or not emtpy (path=%s)", workingPath))
-	}
-
 	if len(missing) > 0 {
 		return fmt.Errorf("missing prerequisites: %s", strings.Join(missing, ", "))
 	}

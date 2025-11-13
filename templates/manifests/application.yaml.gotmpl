@@ -1,0 +1,12 @@
+apiVersion: skuld/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Name }}
+spec:
+  project: {{ .Project }}
+  handler: {{ .Handler }}
+  source:
+    repoURL: {{ .Source.RepoURL }}
+    targetRevision: {{ if .Source.TargetRevision }}{{ .Source.TargetRevision }}{{ else }}HEAD{{ end }}
+    path: {{ .Source.Path }}
+  destination: {{ .Destination }}

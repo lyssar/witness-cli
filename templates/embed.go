@@ -2,13 +2,36 @@ package templates
 
 import (
 	"embed"
+	"io"
 	"text/template"
+
+	"github.com/lyssar/skuld-cli/utils"
 )
 
-//go:embed *.tmpl
-var SystemdFs embed.FS
+//go:embed *.gotmpl manifests/*.gotmpl
+var TemplateFs embed.FS
 
-func NewSystemdTemplate() *template.Template {
-	tmpl := template.Must(template.New("").ParseFS(SystemdFs, "*.tmpl"))
-	return tmpl
+type Renderer struct {
+	Tmpl *template.Template
+}
+
+func NewRenderer() (*Renderer, error) {
+	tmpl, err := template.New("root").
+		Funcs(template.FuncMap{
+			"encryptSecret": utils.EncryptSecret,
+		}).
+		ParseFS(
+			TemplateFs,
+			"*.gotmpl",
+			"manifests/*.gotmpl",
+		)
+
+	if err != nil {
+		return nil, err
+	}
+	return &Renderer{Tmpl: tmpl}, nil
+}
+
+func (r *Renderer) Render(name string, data any, w io.Writer) error {
+	return r.Tmpl.ExecuteTemplate(w, name, data)
 }

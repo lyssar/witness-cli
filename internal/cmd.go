@@ -1,6 +1,8 @@
 package internal
 
 import (
+	"fmt"
+
 	"github.com/lyssar/skuld-cli/utils"
 	"github.com/spf13/cobra"
 )
@@ -10,16 +12,12 @@ func ObserverAddCmd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	observer, err := NewObserver(args[0], cmd)
-	if err != nil {
-		return err
-	}
+	observer := NewObserver()
+	observer.Configure()
+	observer.WriteConfig()
 
-	err = observer.Configure()
-	if err != nil {
-		return err
-	}
+	utils.LogInfo("observer", "struct", fmt.Sprintf("%+v", observer))
 
-	utils.LogSuccess("Add new service", "name", observer.Name)
+	utils.LogSuccess("Add new service", "project", observer.Spec.Project)
 	return nil
 }
