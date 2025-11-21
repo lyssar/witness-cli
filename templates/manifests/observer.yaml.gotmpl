@@ -3,9 +3,12 @@ apiVersion: skuld/v1alpha1
 kind: Observer
 metadata:
   name: {{ .Spec.Project }}
+  user: {{ .Spec.User }}
 spec:
+  destination: {{ .Spec.Destination }}
   project: {{ .Spec.Project }}
   source:
+    path: {{ .Spec.Source.Path }}
     repoURL: {{ .Spec.Source.RepoURL }}
     targetRevision: {{ if .Spec.Source.TargetRevision }}{{ .Spec.Source.TargetRevision }}{{ else }}HEAD{{ end }}
   {{- if .Secrets }}
