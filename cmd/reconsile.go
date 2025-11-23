@@ -5,15 +5,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// reconsileCmd represents the observer creation command
-var reconsileCmd = &cobra.Command{
-	Use:   "reconsile [SERVICE_NAME] [REPO-URL]",
+// reconcileCmd represents the observer creation command
+var reconcileCmd = &cobra.Command{
+	Use:   "reconcile [SERVICE_NAME] [REPO-URL]",
 	Short: "TBD",
 	Long:  `TBD`,
 	Args:  cobra.ExactArgs(2),
-	RunE:  internal.ObserverAddCmd,
+	RunE:  internal.ReconcileCmd,
 }
 
 func init() {
-	rootCmd.AddCommand(reconsileCmd)
+	rootCmd.AddCommand(reconcileCmd)
 }
