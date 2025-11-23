@@ -1,3 +1,16 @@
+# Commands
+
+- init
+  - erstellt observer yaml config, fragt basics ab, braucht aber age zum verschlüsseln
+- deploy
+  - rollt observer aus, erstellt Service und timer für den Service
+  - SSH mit entsprechenden privlegien
+  - muss age file, service, timer und config auf den Sercer kopieren, überschreibt existierende
+- reconcile
+  - wird im service als command genutzt
+  - hat age file als pfad und den config pfad
+  - findet Änderungen im repo und rolled sie aus
+
 # Deamon Config
 
 
