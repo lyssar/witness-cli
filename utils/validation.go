@@ -5,20 +5,38 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path"
 	"regexp"
+	"strings"
 
 	sysd "github.com/iguanesolutions/go-systemd/v5"
 )
 
-const pattern = `^\d+[kKmMgG]?$`
+const (
+	pattern        = `^\d+[kKmMgG]?$`
+	homePathPrefix = "~/"
+)
 
 func IsValidMemory(input string) bool {
 	inputMatched, _ := regexp.MatchString(pattern, input)
 	return inputMatched
 }
 
+func NormalizeHomePath(pathStr string) (string, error) {
+	if strings.HasPrefix(pathStr, homePathPrefix) {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		pathStr = path.Join(homeDir, strings.TrimLeft(pathStr, homePathPrefix))
+	}
+	return pathStr, nil
+}
+
 func FileExists(filePath string) bool {
-	_, err := os.Stat(filePath)
+	filePath, err := NormalizeHomePath(filePath)
+	CheckErr(err)
+	_, err = os.Stat(filePath)
 	return !os.IsNotExist(err)
 }
 
