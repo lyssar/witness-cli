@@ -27,9 +27,9 @@ var rootCmd = &cobra.Command{
 		logLevel := sysdjournaldslog.GetLogLevel(logLevelStr)
 
 		if utils.IsRunningAsSysd() {
-			sysdLogger := sysdjournaldslog.NewHandler(logLevel)
-			slog.SetDefault(slog.New(sysdLogger))
-			return
+			// sysdLogger := sysdjournaldslog.NewHandler(logLevel)
+			// slog.SetDefault(slog.New(sysdLogger))
+			// return
 		}
 		w := os.Stderr
 		switch logLevel {

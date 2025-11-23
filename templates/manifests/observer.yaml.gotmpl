@@ -10,11 +10,7 @@ spec:
   source:
     path: {{ .Spec.Source.Path }}
     repoURL: {{ .Spec.Source.RepoURL }}
+    user: {{ .Spec.Source.User }}
+    accessToken: {{ encryptSecret $.Spec.Source.AccessToken $.AgeKeyFile}}
     targetRevision: {{ if .Spec.Source.TargetRevision }}{{ .Spec.Source.TargetRevision }}{{ else }}HEAD{{ end }}
-  {{- if .Secrets }}
-  secrets:
-  {{- range $k, $v := .Secrets }}
-    {{ $k }}: {{ encryptSecret $v $.AgeKeyFile }}
-  {{- end }}
-  {{- end }}
 {{- end }}
