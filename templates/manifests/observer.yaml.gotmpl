@@ -2,8 +2,8 @@
 apiVersion: skuld/v1alpha1
 kind: Observer
 metadata:
-  name: {{ .Spec.Project }}
-  user: {{ .Spec.User }}
+  name: {{ .Metadata.Name }}
+  user: {{ .Metadata.User }}
 spec:
   destination: {{ .Spec.Destination }}
   project: {{ .Spec.Project }}
