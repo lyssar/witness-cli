@@ -2,18 +2,16 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
-	scp "github.com/bramvdbogaerde/go-scp"
 	"github.com/charmbracelet/huh"
 	"github.com/kevinburke/ssh_config"
+	"github.com/melbahja/goph"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 var (
@@ -25,8 +23,7 @@ var (
 )
 
 type RemoteClient struct {
-	SSH *ssh.Client
-	Scp *scp.Client
+	SSH *goph.Client
 }
 
 func NewRemote(host string, sshUser string, sshKey string) (*RemoteClient, error) {
@@ -37,18 +34,19 @@ func NewRemote(host string, sshUser string, sshKey string) (*RemoteClient, error
 			return
 		}
 
-		scpClient, err := scp.NewClientBySSH(sshClient)
-		if err != nil {
-			remoteClientErr = err
-			return
-		}
-
 		remoteClient = &RemoteClient{
 			SSH: sshClient,
-			Scp: &scpClient,
 		}
 	})
-	return remoteClient, nil
+	return remoteClient, remoteClientErr
+}
+
+func (r *RemoteClient) RunSudo(command string, pass string, user *string) ([]byte, error) {
+	userSwitch := ""
+	if user != nil {
+		userSwitch = fmt.Sprintf(" -u %s ", *user)
+	}
+	return r.SSH.Run(fmt.Sprintf("echo '%s' | sudo -S -p ''%s bash -c '%s'", pass, userSwitch, command))
 }
 
 func (r RemoteClient) TransferFile(srcFile string, dstFile string) {
@@ -67,7 +65,7 @@ func loadSSHConfig() *ssh_config.Config {
 	return sshConfig
 }
 
-func newSSHClient(host string, sshUser string, sshKey string) (*ssh.Client, error) {
+func newSSHClient(host string, sshUser string, sshKey string) (*goph.Client, error) {
 	var err error
 	sshConfig := loadSSHConfig()
 
@@ -76,7 +74,7 @@ func newSSHClient(host string, sshUser string, sshKey string) (*ssh.Client, erro
 		configuredHost = host
 	}
 
-	configuredPort, _ := sshConfig.Get(host, "Port")
+	// configuredPort, _ := sshConfig.Get(host, "Port")
 
 	if sshKey == "" {
 		sshKey, err = sshConfig.Get(host, "IdentityFile")
@@ -85,69 +83,55 @@ func newSSHClient(host string, sshUser string, sshKey string) (*ssh.Client, erro
 		}
 	}
 
-	slog.Debug("IdentityFile", "sshKey", sshKey, "host", host)
+	normalizedSSHKey, passphrase, err := getNormaluedSSHKey(sshKey)
+
+	if err != nil {
+		return nil, err
+	}
+
+	slog.Debug("IdentityFile", "sshKey", normalizedSSHKey, "host", host)
 
 	if sshUser == "" {
 		sshUser, _ = sshConfig.Get(host, "User")
 	}
 
-	parsedSshKeySigner, err := getKeySigner(sshKey)
+	auth, err := goph.Key(normalizedSSHKey, passphrase)
+
 	if err != nil {
 		return nil, err
 	}
 
-	hostKeyCallback, err := knownhosts.New(filepath.Join(os.Getenv("HOME"), ".ssh", "known_hosts"))
-	if err != nil {
-		return nil, err
-	}
-
-	clientConf := &ssh.ClientConfig{
-		User: sshUser,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(*parsedSshKeySigner),
-		},
-		HostKeyCallback: hostKeyCallback,
-		Timeout:         10 * time.Second,
-	}
-
-	serverAddr := net.JoinHostPort(configuredHost, configuredPort)
-
-	client, err := ssh.Dial("tcp", serverAddr, clientConf)
-
-	CheckErr(err)
+	client, err := goph.New(sshUser, configuredHost, auth)
 
 	return client, nil
 }
 
-func getKeySigner(sshKey string) (*ssh.Signer, error) {
-	var (
-		signer ssh.Signer
-		err    error
-	)
+func getNormaluedSSHKey(sshKey string) (string, string, error) {
+	var err error
+	passphrase := ""
 
 	normalizedKeyPath, err := NormalizeHomePath(sshKey)
 
 	if err != nil || !FileExists(sshKey) {
-		return nil, errors.New("ssh key not found")
+		return "", "", errors.New("ssh key not found")
 	}
 
 	sshKeyPemBytes, err := os.ReadFile(normalizedKeyPath)
 	if err != nil {
-		return nil, err
+		return "", "", err
 	}
 
 	var passErr *ssh.PassphraseMissingError
-	signer, err = ssh.ParsePrivateKey(sshKeyPemBytes)
+	_, err = ssh.ParsePrivateKey(sshKeyPemBytes)
 
 	if errors.Is(err, passErr) {
-		var passphrase string
 		huh.NewInput().Title("SSH key passphrase").EchoMode(huh.EchoModePassword).Value(&passphrase).Run()
-		signer, err = ssh.ParsePrivateKeyWithPassphrase(sshKeyPemBytes, []byte(passphrase))
+		_, err = ssh.ParsePrivateKeyWithPassphrase(sshKeyPemBytes, []byte(passphrase))
 	}
 
 	if err != nil {
-		return nil, err
+		return "", "", err
 	}
 
-	return &signer, nil
+	return normalizedKeyPath, passphrase, nil
 }
