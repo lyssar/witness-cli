@@ -7,7 +7,7 @@ import (
 
 // reconcileCmd represents the observer creation command
 var reconcileCmd = &cobra.Command{
-	Use:   "reconcile [SERVICE_NAME] [REPO-URL]",
+	Use:   "reconcile [MANIFEST] [AGE_FILE]",
 	Short: "TBD",
 	Long:  `TBD`,
 	Args:  cobra.ExactArgs(2),

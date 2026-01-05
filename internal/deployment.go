@@ -4,9 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/lyssar/skuld-cli/templates"
 	"github.com/lyssar/skuld-cli/utils"
 	"github.com/spf13/cobra"
 )
@@ -22,6 +25,14 @@ type DeployHandler struct {
 	Manifest    string
 	Sudoer      string
 	SSH         SSHConfig
+}
+
+type DeployFile struct {
+	TemplateName    string
+	TemplateData    *map[string]any
+	RemoteFilePath  string
+	RemoteFileOwner string
+	Content         []byte
 }
 
 func NewDeployHandler(cmd *cobra.Command) *DeployHandler {
@@ -102,7 +113,7 @@ func (dh *DeployHandler) Validate() error {
 		return fmt.Errorf("%s (%s)", string(stdOut), stdErr.Error())
 	}
 
-	stdOut, stdErr = remoteClient.RunSudo(fmt.Sprintf("S=%s.service; T=${S%%.service}.timer; systemctl show -p LoadState --value \"$T\"", observer.Metadata.Name), dh.Sudoer, nil)
+	stdOut, stdErr = remoteClient.RunSudo(fmt.Sprintf("S=%s.service; T=${S%%.service}.timer; systemctl show -p LoadState --value \"$T\"", strings.ToLower(observer.Metadata.Name)), dh.Sudoer, nil)
 	if stdErr != nil {
 		return fmt.Errorf("Checkup failed: %s (%s)", string(stdOut), stdErr)
 	}
@@ -157,8 +168,10 @@ func (dh *DeployHandler) DeployToHost() error {
 
 	dh.AskForSudoer()
 
+	remoteAgeFilePath := fmt.Sprintf("/home/%s/.config/skuld/%s/age.key", observer.Metadata.User, strings.ToLower(observer.Spec.Project))
+	remoteManifestPath := fmt.Sprintf("/home/%s/.config/skuld/%s/manifest.yaml", observer.Metadata.User, strings.ToLower(observer.Spec.Project))
 	utils.LogInfo("Creating destination for user")
-	stdOut, stdErr := client.RunSudo(fmt.Sprintf("mkdir -p %s", observer.Spec.Destination), dh.Sudoer, nil)
+	stdOut, stdErr := client.RunSudo(fmt.Sprintf("mkdir -p %s %s", observer.Spec.Destination, filepath.Dir(remoteManifestPath)), dh.Sudoer, nil)
 
 	if stdErr != nil {
 		return fmt.Errorf("Error while destination folder: %s", stdOut)
@@ -166,15 +179,93 @@ func (dh *DeployHandler) DeployToHost() error {
 
 	utils.LogInfo("Change owner")
 
-	stdOut, stdErr = client.RunSudo(fmt.Sprintf("chown %s:%[1]s %s", observer.Metadata.User, observer.Spec.Destination), dh.Sudoer, nil)
+	stdOut, stdErr = client.RunSudo(fmt.Sprintf("chown %s:%[1]s %s %s", observer.Metadata.User, observer.Spec.Destination, filepath.Dir(remoteManifestPath)), dh.Sudoer, nil)
 
 	if stdErr != nil {
 		return fmt.Errorf("Error while changing folder: %s", stdOut)
 	}
 
-	// TODO create service file
-	//      create timer file
-	//
+	renderer, err := templates.NewRenderer()
+	if err != nil {
+		return err
+	}
+
+	sftp, err := client.SSH.NewSftp()
+	if err != nil {
+		return err
+	}
+
+	templateData := map[string]any{
+		"Observer":     observer,
+		"ManifestPath": remoteManifestPath,
+		"AgeFile":      remoteAgeFilePath,
+	}
+
+	ageKeyData, err := os.ReadFile(dh.AgeFilePath)
+	if err != nil {
+		return fmt.Errorf("Error get age key file content: %s", err)
+	}
+
+	manifestData, err := os.ReadFile(dh.Manifest)
+	if err != nil {
+		return fmt.Errorf("Error get manifest file content: %s", err)
+	}
+
+	deployFileList := []DeployFile{
+		{
+			TemplateName:    "service",
+			TemplateData:    &templateData,
+			RemoteFilePath:  fmt.Sprintf("/etc/systemd/system/%s.service", strings.ToLower(observer.Spec.Project)),
+			RemoteFileOwner: "root",
+		},
+		{
+			TemplateName:    "timer",
+			TemplateData:    &templateData,
+			RemoteFilePath:  fmt.Sprintf("/etc/systemd/system/%s.timer", strings.ToLower(observer.Spec.Project)),
+			RemoteFileOwner: "root",
+		},
+		{
+			TemplateName:    "direct",
+			Content:         manifestData,
+			RemoteFilePath:  remoteManifestPath,
+			RemoteFileOwner: observer.Metadata.User,
+		},
+		{
+			TemplateName:    "direct",
+			Content:         ageKeyData,
+			RemoteFilePath:  remoteAgeFilePath,
+			RemoteFileOwner: observer.Metadata.User,
+		},
+	}
+
+	for _, deployFile := range deployFileList {
+		tmpRemoteFilePath := fmt.Sprintf("/tmp/%s", filepath.Base(deployFile.RemoteFilePath))
+		remoteFile, err := sftp.Create(tmpRemoteFilePath)
+		if err != nil {
+			return fmt.Errorf("Error creating tmp remote file [%s]: %s", tmpRemoteFilePath, err)
+		}
+
+		if deployFile.TemplateName == "direct" {
+			_, err = remoteFile.Write(deployFile.Content)
+			if err != nil {
+				return err
+			}
+		} else {
+			renderer.Render(deployFile.TemplateName, deployFile.TemplateData, remoteFile)
+		}
+
+		remoteFile.Close()
+
+		stdOut, stdErr = client.RunSudo(fmt.Sprintf("mv %s %s", tmpRemoteFilePath, deployFile.RemoteFilePath), dh.Sudoer, nil)
+		if stdErr != nil {
+			return fmt.Errorf("Error while moving remote file do location: %s", stdOut)
+		}
+
+		stdOut, stdErr = client.RunSudo(fmt.Sprintf("chown %s:%[1]s %s", deployFile.RemoteFileOwner, deployFile.RemoteFilePath), dh.Sudoer, nil)
+		if stdErr != nil {
+			return fmt.Errorf("Error while changing remote file owner: %s", stdOut)
+		}
+	}
 
 	return nil
 }

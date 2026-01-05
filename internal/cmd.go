@@ -1,6 +1,8 @@
 package internal
 
 import (
+	"os"
+
 	"github.com/lyssar/skuld-cli/utils"
 	"github.com/spf13/cobra"
 )
@@ -20,8 +22,8 @@ func InitCmd(cmd *cobra.Command, args []string) error {
 }
 
 func ReconcileCmd(cmd *cobra.Command, args []string) error {
+	utils.LogInfo("user executing this", "user_id", os.Geteuid(), "group_id", os.Getegid())
 	utils.LogSuccess("reconcilation finished", "state", "NOT_IMPLEMENTED")
-
 	return nil
 }
 

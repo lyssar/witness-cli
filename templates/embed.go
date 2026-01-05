@@ -3,6 +3,7 @@ package templates
 import (
 	"embed"
 	"io"
+	"strings"
 	"text/template"
 
 	"github.com/lyssar/skuld-cli/utils"
@@ -19,6 +20,7 @@ func NewRenderer() (*Renderer, error) {
 	tmpl, err := template.New("root").
 		Funcs(template.FuncMap{
 			"encryptSecret": utils.EncryptSecret,
+			"ToLower":       strings.ToLower,
 		}).
 		ParseFS(
 			TemplateFs,
