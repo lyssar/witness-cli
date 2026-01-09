@@ -33,7 +33,13 @@ func DeployCmd(cmd *cobra.Command, args []string) error {
 	err := deployHandler.Validate()
 	utils.CheckErr(err)
 
-	err = deployHandler.DeployToHost()
+	observer, err := NewObserverFromManifest(deployHandler.Manifest, deployHandler.AgeFilePath)
+	utils.CheckErr(err)
+
+	err = deployHandler.DeployToHost(observer)
+	utils.CheckErr(err)
+
+	err = deployHandler.ReloadSystemD(observer)
 	utils.CheckErr(err)
 
 	//   - Create Service and Timer on the system, named by the app of apps name

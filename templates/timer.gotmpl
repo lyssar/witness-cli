@@ -5,11 +5,8 @@ Description=Skuld CLI {{ .Observer.Metadata.Name }} reconsile timer
 [Timer]
 OnBootSec=30s
 OnUnitActiveSec=30s
-AccuracySec=1s
-RandomizedDelaySec=3s
 
 Persistent=true
-Unit={{ .Observer.Metadata.Name | ToLower }}.service
 
 [Install]
 WantedBy=timers.target

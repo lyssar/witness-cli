@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -154,14 +155,43 @@ func (dh *DeployHandler) WithManifest(manifest string) DeployHandler {
 	return newDeployHandler
 }
 
-func (dh *DeployHandler) DeployToHost() error {
-	utils.LogInfo("Deploying to host", "host", dh.SSH.Host)
+func (dh *DeployHandler) ReloadSystemD(observer Observer) error {
+	utils.LogInfo("Reloading systemd to apply changes", "host", dh.SSH.Host)
 	client, err := utils.NewRemote(dh.SSH.Host, dh.SSH.User, *dh.SSH.Key)
 	if err != nil {
 		return err
 	}
 
-	observer, err := NewObserverFromManifest(dh.Manifest, dh.AgeFilePath)
+	fullSystemDPath := observer.FullServicePath()
+	systemdService := strings.TrimSuffix(fullSystemDPath, path.Ext(fullSystemDPath)) + "*"
+
+	utils.LogInfo("Verify systemd service", "service", systemdService)
+	analyzeOut, err := client.RunSudo(fmt.Sprintf("systemd-analyze verify %s", systemdService), dh.Sudoer, nil)
+	if string(analyzeOut) != "" || err != nil {
+		return fmt.Errorf("Error during systemd analyzation: %s (%s)", string(analyzeOut), err)
+	}
+
+	reloadOut, err := client.RunSudo("systemctl daemon-reload", dh.Sudoer, nil)
+	if string(reloadOut) != "" || err != nil {
+		return fmt.Errorf("Error during daemon-reload: %s (%s)", string(analyzeOut), err)
+	}
+
+	restartOut, err := client.RunSudo(fmt.Sprintf("systemctl reload-or-restart %s.timer", strings.ToLower(observer.Spec.Project)), dh.Sudoer, nil)
+	if err != nil {
+		return fmt.Errorf("Error during service restart: %s (%s)", string(restartOut), err)
+	}
+
+	enableOut, err := client.RunSudo(fmt.Sprintf("systemctl enable --quiet --no-warn %s", strings.ToLower(observer.Spec.Project)), dh.Sudoer, nil)
+	if err != nil {
+		return fmt.Errorf("Error during service enable: %s (%s)", string(enableOut), err)
+	}
+
+	return nil
+}
+
+func (dh *DeployHandler) DeployToHost(observer Observer) error {
+	utils.LogInfo("Deploying to host", "host", dh.SSH.Host)
+	client, err := utils.NewRemote(dh.SSH.Host, dh.SSH.User, *dh.SSH.Key)
 	if err != nil {
 		return err
 	}
@@ -215,13 +245,13 @@ func (dh *DeployHandler) DeployToHost() error {
 		{
 			TemplateName:    "service",
 			TemplateData:    &templateData,
-			RemoteFilePath:  fmt.Sprintf("/etc/systemd/system/%s.service", strings.ToLower(observer.Spec.Project)),
+			RemoteFilePath:  observer.FullServicePath(),
 			RemoteFileOwner: "root",
 		},
 		{
 			TemplateName:    "timer",
 			TemplateData:    &templateData,
-			RemoteFilePath:  fmt.Sprintf("/etc/systemd/system/%s.timer", strings.ToLower(observer.Spec.Project)),
+			RemoteFilePath:  observer.FullServiceTimerPath(),
 			RemoteFileOwner: "root",
 		},
 		{

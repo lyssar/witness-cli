@@ -43,6 +43,14 @@ type Observer struct {
 	AgeKeyFile string   `yaml:"-"`
 }
 
+func (observer Observer) FullServicePath() string {
+	return fmt.Sprintf("/etc/systemd/system/%s.service", strings.ToLower(observer.Spec.Project))
+}
+
+func (observer Observer) FullServiceTimerPath() string {
+	return fmt.Sprintf("/etc/systemd/system/%s.timer", strings.ToLower(observer.Spec.Project))
+}
+
 func NewObserver(cmd *cobra.Command) Observer {
 	gitSource := &GitSource{}
 	err := defaults.Set(gitSource)

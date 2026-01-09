@@ -4,16 +4,13 @@ Description=Skuld CLI {{ .Observer.Metadata.Name }} service
 Wants=network-online.target
 After=network-online.target
 
-Conflicts={{ .Observer.Metadata.Name | ToLower }}.service
-
 [Service]
 Type=oneshot
 
 User={{ .Observer.Metadata.User }}
 Group={{ .Observer.Metadata.User }}
 
-ExecStart=/usr/local/bin/skuld-cli reconcile {{ .ManifestPath }} {{ .AgeFile }}
+WorkingDirectory=/home/{{ .Observer.Metadata.User }}
 
-[Install]
-WantedBy=multi-user.target
+ExecStart=/usr/local/bin/skuld-cli reconcile {{ .ManifestPath }} {{ .AgeFile }}
 {{- end }}
