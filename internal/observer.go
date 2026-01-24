@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/huh"
 	"github.com/creasty/defaults"
@@ -28,11 +29,16 @@ type Metadata struct {
 	User string `yaml:"user"`
 }
 
+type Timeout struct {
+	Reconciliation time.Duration `default:"180s" yaml:"reconciliation"`
+}
+
 type Spec struct {
 	Project     string    `yaml:"project"`
 	Destination string    `yaml:"destination"`
 	Handler     string    `yaml:"-"`
 	Source      GitSource `yaml:"source"`
+	Timeout     Timeout   `yaml:"timeout"`
 }
 
 type Observer struct {
@@ -65,9 +71,14 @@ func NewObserver(cmd *cobra.Command) Observer {
 	err = defaults.Set(metadata)
 	utils.CheckErr(err)
 
+	timeout := &Timeout{}
+	err = defaults.Set(timeout)
+	utils.CheckErr(err)
+
 	observer := &Observer{}
 	err = defaults.Set(observer)
 	observer.Metadata = *metadata
+	observer.Spec.Timeout = *timeout
 	observer.Spec = *spec
 
 	ageKey, err := cmd.Flags().GetString("age-key")

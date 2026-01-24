@@ -21,6 +21,7 @@ func NewRenderer() (*Renderer, error) {
 		Funcs(template.FuncMap{
 			"encryptSecret": utils.EncryptSecret,
 			"ToLower":       strings.ToLower,
+			"ToSeconds":     utils.ToSeconds,
 		}).
 		ParseFS(
 			TemplateFs,

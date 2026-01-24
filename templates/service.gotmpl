@@ -12,5 +12,5 @@ Group={{ .Observer.Metadata.User }}
 
 WorkingDirectory=/home/{{ .Observer.Metadata.User }}
 
-ExecStart=/usr/local/bin/skuld-cli reconcile {{ .ManifestPath }} {{ .AgeFile }}
+ExecStart=/usr/local/bin/skuld-cli reconcile {{ .ObserverConfigPath }}
 {{- end }}

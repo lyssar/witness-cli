@@ -7,10 +7,10 @@ import (
 
 // reconcileCmd represents the observer creation command
 var reconcileCmd = &cobra.Command{
-	Use:   "reconcile [MANIFEST] [AGE_FILE]",
+	Use:   "reconcile [OBSERVER_CONFIG_ROOT]",
 	Short: "TBD",
 	Long:  `TBD`,
-	Args:  cobra.ExactArgs(2),
+	Args:  cobra.ExactArgs(1),
 	RunE:  internal.ReconcileCmd,
 }
 

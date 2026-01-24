@@ -198,8 +198,9 @@ func (dh *DeployHandler) DeployToHost(observer Observer) error {
 
 	dh.AskForSudoer()
 
-	remoteAgeFilePath := fmt.Sprintf("/home/%s/.config/skuld/%s/age.key", observer.Metadata.User, strings.ToLower(observer.Spec.Project))
-	remoteManifestPath := fmt.Sprintf("/home/%s/.config/skuld/%s/manifest.yaml", observer.Metadata.User, strings.ToLower(observer.Spec.Project))
+	observerUserHomeConfigDir := fmt.Sprintf("/home/%s/.config/skuld", observer.Metadata.User)
+	remoteAgeFilePath := fmt.Sprintf("%s/%s/age.key", observerUserHomeConfigDir, strings.ToLower(observer.Spec.Project))
+	remoteManifestPath := fmt.Sprintf("%s/%s/manifest.yaml", observerUserHomeConfigDir, strings.ToLower(observer.Spec.Project))
 	utils.LogInfo("Creating destination for user")
 	stdOut, stdErr := client.RunSudo(fmt.Sprintf("mkdir -p %s %s", observer.Spec.Destination, filepath.Dir(remoteManifestPath)), dh.Sudoer, nil)
 
@@ -209,7 +210,7 @@ func (dh *DeployHandler) DeployToHost(observer Observer) error {
 
 	utils.LogInfo("Change owner")
 
-	stdOut, stdErr = client.RunSudo(fmt.Sprintf("chown %s:%[1]s %s %s", observer.Metadata.User, observer.Spec.Destination, filepath.Dir(remoteManifestPath)), dh.Sudoer, nil)
+	stdOut, stdErr = client.RunSudo(fmt.Sprintf("chown %s:%[1]s %s %s", observer.Metadata.User, observerUserHomeConfigDir, observer.Spec.Destination, filepath.Dir(remoteManifestPath)), dh.Sudoer, nil)
 
 	if stdErr != nil {
 		return fmt.Errorf("Error while changing folder: %s", stdOut)
@@ -226,9 +227,9 @@ func (dh *DeployHandler) DeployToHost(observer Observer) error {
 	}
 
 	templateData := map[string]any{
-		"Observer":     observer,
-		"ManifestPath": remoteManifestPath,
-		"AgeFile":      remoteAgeFilePath,
+		"Observer":           observer,
+		"ObserverConfigPath": observerUserHomeConfigDir,
+		"AgeFile":            remoteAgeFilePath,
 	}
 
 	ageKeyData, err := os.ReadFile(dh.AgeFilePath)

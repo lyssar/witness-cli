@@ -3,8 +3,8 @@
 Description=Skuld CLI {{ .Observer.Metadata.Name }} reconsile timer
 
 [Timer]
-OnBootSec=30s
-OnUnitActiveSec=30s
+OnBootSec={{ ToSeconds $.Observer.Spec.Timeout.Reconciliation }}
+OnUnitActiveSec={{ ToSeconds $.Observer.Spec.Timeout.Reconciliation }}
 
 Persistent=true
 

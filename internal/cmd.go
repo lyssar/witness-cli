@@ -23,7 +23,7 @@ func InitCmd(cmd *cobra.Command, args []string) error {
 
 func ReconcileCmd(cmd *cobra.Command, args []string) error {
 	utils.LogInfo("user executing this", "user_id", os.Geteuid(), "group_id", os.Getegid())
-	utils.LogSuccess("reconcilation finished", "state", "NOT_IMPLEMENTED")
+	utils.LogSuccess("reconcilation finished", "state", "NOT_IMPLEMENTED", "config", args[0])
 	return nil
 }
 
