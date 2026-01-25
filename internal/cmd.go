@@ -1,7 +1,7 @@
 package internal
 
 import (
-	"os"
+	"log/slog"
 
 	"github.com/lyssar/skuld-cli/utils"
 	"github.com/spf13/cobra"
@@ -21,9 +21,38 @@ func InitCmd(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func NewAppCmd(cmd *cobra.Command, args []string) error {
+	if err := CheckPrerequisites(cmd); err != nil {
+		return err
+	}
+
+	app := NewApp(cmd)
+	app.Configure()
+	app.WriteConfig()
+
+	utils.DebugStruct(app)
+
+	return nil
+}
+
 func ReconcileCmd(cmd *cobra.Command, args []string) error {
-	utils.LogInfo("user executing this", "user_id", os.Geteuid(), "group_id", os.Getegid())
-	utils.LogSuccess("reconcilation finished", "state", "NOT_IMPLEMENTED", "config", args[0])
+	slog.Info("Start reconcilation run")
+	reconcileRun := NewReconcileRun(args[0])
+	if ok, err := reconcileRun.Validate(); !ok {
+		return err
+	}
+
+	err := reconcileRun.LoadManifest()
+	if err != nil {
+		return err
+	}
+
+	err = reconcileRun.Reconcile()
+	if err != nil {
+		return err
+	}
+
+	slog.Info("Finished reconcilation run")
 	return nil
 }
 

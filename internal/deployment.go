@@ -198,7 +198,7 @@ func (dh *DeployHandler) DeployToHost(observer Observer) error {
 
 	dh.AskForSudoer()
 
-	observerUserHomeConfigDir := fmt.Sprintf("/home/%s/.config/skuld", observer.Metadata.User)
+	observerUserHomeConfigDir := fmt.Sprintf("/home/%s/.config/%s", observer.Metadata.User, utils.APP_NAME)
 	remoteAgeFilePath := fmt.Sprintf("%s/%s/age.key", observerUserHomeConfigDir, strings.ToLower(observer.Spec.Project))
 	remoteManifestPath := fmt.Sprintf("%s/%s/manifest.yaml", observerUserHomeConfigDir, strings.ToLower(observer.Spec.Project))
 	utils.LogInfo("Creating destination for user")
