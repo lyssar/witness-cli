@@ -1,0 +1,93 @@
+# --yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+dotenv: ['.env']
+
+vars:
+  APP: skuld-cli
+  TMP_BIN: '/tmp/{{.APP}}'
+  GOOS: linux
+  GOARCH: amd64
+  CGO_ENABLED: 0
+  GOFLAGS: -trimpath -ldflags="-s -w"
+  TARGET_DIR: '{{.DIR | default "."}}'
+
+tasks:
+  default:
+    desc: Show deployment environment variables
+    cmds:
+      - printf "DEPLOY_HOST=%s\n" "$DEPLOY_HOST"
+      - printf "DEPLOY_USER=%s\n" "$DEPLOY_USER"
+      - printf "DEPLOY_PATH=%s\n" "$DEPLOY_PATH"
+    silent: true
+
+  clean:
+    summary: Remove local temporary build artifacts
+    desc: Removes local tmp build
+    cmds:
+      - rm -f {{.TMP_BIN}}
+    silent: true
+
+  build:
+    summary: Build the Go application
+    desc: Builds the golang applicaiton into tmp
+    deps: [clean]
+    cmds:
+      - printf "🔨 Building {{.APP}}...\n"
+      - GOOS={{.GOOS}} GOARCH={{.GOARCH}} CGO_ENABLED={{.CGO_ENABLED}} go build {{.GOFLAGS}} -o {{.TMP_BIN}} .
+    silent: true
+
+  deploy-server:
+    summary: Deploy the CLI to the test server
+    desc: Will build and deploy the cli to the server for testing
+    deps: [build]
+    cmds:
+      - printf "🚀 Deploying to %s...\n" "$DEPLOY_HOST"
+      - rsync -avz {{.TMP_BIN}} $DEPLOY_USER@$DEPLOY_HOST:{{.TMP_BIN}}
+      - printf "   Installing on server...\n"
+      - |
+        ssh -t $DEPLOY_USER@$DEPLOY_HOST '
+          set -euo pipefail
+          sudo install -m 0755 {{.TMP_BIN}} /usr/local/bin/{{.APP}}
+          printf "✓ Install successful\n"
+        '
+      - printf "✅ Deployment successful\n"
+    silent: true
+
+  deploy:
+    summary: Run the 'deploy' command
+    desc: Build & Run deploy command
+    deps: [build]
+    cmds:
+      - printf "🚀 Running 'deploy' command...\n"
+      - cmd: '{{.TMP_BIN}} deploy -d -a ~/.config/skuld-cli/skuldd/age.key --host hetzner ~/.config/skuld-cli/skuldd/manifest.yaml'
+    silent: true
+
+  init:
+    summary: Run the 'init' command
+    desc: Build & Run init command
+    deps: [build]
+    cmds:
+      - printf "✨ Running 'init' command...\n"
+      - cmd: '{{.TMP_BIN}} init -d'
+    silent: true
+
+  new-add:
+    summary: Run the 'new-app' command
+    desc: Build & Run new-app command
+    deps: [build]
+    dir: '{{.TARGET_DIR}}'
+    cmds:
+      - printf "📦 Running 'new-app' command...\n"
+      - cmd: '{{.TMP_BIN}} new-app -a ~/.config/skuld-cli/skuldd/age.key'
+    silent: true
+
+  reconcile:
+    summary: Run the 'reconcile' command
+    desc: Build & Run reconcile command
+    deps: [build]
+    cmds:
+      - printf "🔄 Running 'reconcile' command...\n"
+      - cmd: '{{.TMP_BIN}} reconcile -d ~/.config/skuld-cli/skuldd/'
+    silent: true
