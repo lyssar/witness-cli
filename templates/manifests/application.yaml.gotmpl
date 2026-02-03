@@ -1,12 +1,24 @@
+{{- define "application" -}}
 apiVersion: skuld/v1alpha1
 kind: Application
 metadata:
-  name: {{ .Name }}
+  name: {{ .Metadata.Name }}
 spec:
-  project: {{ .Project }}
-  handler: {{ .Handler }}
+  handler: {{ .Spec.Handler }}
   source:
-    repoURL: {{ .Source.RepoURL }}
-    targetRevision: {{ if .Source.TargetRevision }}{{ .Source.TargetRevision }}{{ else }}HEAD{{ end }}
-    path: {{ .Source.Path }}
-  destination: {{ .Destination }}
+    path: {{ .Spec.Source.Path }}
+    repoURL: {{ .Spec.Source.RepoURL }}
+    user: {{ .Spec.Source.User }}
+    accessToken: {{ encryptSecret $.Spec.Source.AccessToken $.AgeKeyFile}}
+    targetRevision: {{ if .Spec.Source.TargetRevision }}{{ .Spec.Source.TargetRevision }}{{ else }}HEAD{{ end }}
+  inventory:
+  {{- range .Spec.Inventory }}
+    - {{ . }}
+  {{- end}}
+  {{- if .Spec.SecretFiles }}
+  secretFiles:
+  {{- range .Spec.SecretFiles }}
+    - {{ . }}
+  {{- end }}
+  {{- end }}
+{{- end -}}

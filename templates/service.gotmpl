@@ -1,13 +1,16 @@
+{{- define "service" }}
 [Unit]
-Description={{ .AppName }} {{ .ServiceName }} service
-Wants={{ .ServiceName }}.target
-After={{ .ServiceName }}.target
+Description=Skuld CLI {{ .Observer.Metadata.Name }} service
+Wants=network-online.target
+After=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/{{ .AppName }} --TBD={{ .TBD }}
-User={{ .User }}
-Restart=always
-RestartSec=5
+Type=oneshot
 
-[Install]
-WantedBy=multi-user.target
+User={{ .Observer.Metadata.User }}
+Group={{ .Observer.Metadata.User }}
+
+WorkingDirectory=/home/{{ .Observer.Metadata.User }}
+
+ExecStart=/usr/local/bin/skuld-cli reconcile {{ .ObserverConfigPath }}
+{{- end }}

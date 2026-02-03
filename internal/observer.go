@@ -6,58 +6,80 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/huh"
+	"github.com/creasty/defaults"
 	"github.com/lyssar/skuld-cli/templates"
 	"github.com/lyssar/skuld-cli/utils"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 type GitSource struct {
-	RepoURL        string
-	TargetRevision string
-	Path           string
-	User           string
-	AccessToken    string
+	RepoURL        string `yaml:"repoURL"`
+	TargetRevision string `default:"HEAD" yaml:"targetRevision"`
+	Path           string `default:"/" yaml:"path"`
+	User           string `yaml:"user"`
+	AccessToken    string `yaml:"accessToken"`
+}
+
+type Metadata struct {
+	Name string `yaml:"name"`
+	User string `yaml:"user"`
+}
+
+type Timeout struct {
+	Reconciliation time.Duration `default:"180s" yaml:"reconciliation"`
 }
 
 type Spec struct {
-	Project     string
-	User        string
-	Handler     string
-	Source      GitSource
-	Destination string
+	Project     string    `yaml:"project"`
+	Destination string    `yaml:"destination"`
+	Handler     string    `yaml:"-"`
+	Source      GitSource `yaml:"source"`
+	Timeout     Timeout   `yaml:"timeout"`
 }
 
 type Observer struct {
-	ApiVersion string `default:"skuld/v1alpha1" yaml:"apiVersion"`
-	Kind       string `yaml:"kind"`
-	Spec       Spec   `yaml:"spec"`
-	AgeKeyFile string `yaml:"-"`
+	ApiVersion string   `default:"skuld/v1alpha1" yaml:"apiVersion"`
+	Kind       string   `default:"Observer" yaml:"kind"`
+	Metadata   Metadata `yaml:"metadata"`
+	Spec       Spec     `yaml:"spec"`
+	AgeKeyFile string   `yaml:"-"`
+}
+
+func (observer Observer) FullServicePath() string {
+	return fmt.Sprintf("/etc/systemd/system/%s.service", strings.ToLower(observer.Spec.Project))
+}
+
+func (observer Observer) FullServiceTimerPath() string {
+	return fmt.Sprintf("/etc/systemd/system/%s.timer", strings.ToLower(observer.Spec.Project))
 }
 
 func NewObserver(cmd *cobra.Command) Observer {
-	gitSource := GitSource{
-		RepoURL:        "",
-		TargetRevision: "HEAD",
-		Path:           "/",
-		User:           "",
-		AccessToken:    "",
-	}
+	gitSource := &GitSource{}
+	err := defaults.Set(gitSource)
+	utils.CheckErr(err)
 
-	spec := Spec{
-		Project:     "",
-		User:        "",
-		Handler:     "",
-		Source:      gitSource,
-		Destination: "",
-	}
+	spec := &Spec{}
+	err = defaults.Set(spec)
+	utils.CheckErr(err)
+	spec.Source = *gitSource
 
-	observer := Observer{
-		ApiVersion: "skuld/v1alpha1",
-		Kind:       "Observer",
-		Spec:       spec,
-	}
+	metadata := &Metadata{}
+	err = defaults.Set(metadata)
+	utils.CheckErr(err)
+
+	timeout := &Timeout{}
+	err = defaults.Set(timeout)
+	utils.CheckErr(err)
+
+	observer := &Observer{}
+	err = defaults.Set(observer)
+	observer.Metadata = *metadata
+	observer.Spec.Timeout = *timeout
+	observer.Spec = *spec
 
 	ageKey, err := cmd.Flags().GetString("age-key")
 	utils.CheckErr(err)
@@ -67,7 +89,26 @@ func NewObserver(cmd *cobra.Command) Observer {
 		observer.AgeKeyFile = normalizedPath
 	}
 
-	return observer
+	return *observer
+}
+
+func NewObserverFromManifest(manifestFile, ageKeyFile string) (Observer, error) {
+	observer := &Observer{}
+	if !utils.FileExists(manifestFile) {
+		return *observer, fmt.Errorf("Manifest file %s does not exist", manifestFile)
+	}
+
+	manifestContent, err := os.ReadFile(manifestFile)
+
+	if err != nil {
+		return *observer, err
+	}
+
+	if err := yaml.Unmarshal(manifestContent, observer); err != nil {
+		return *observer, err
+	}
+
+	return *observer, nil
 }
 
 func (observer *Observer) Configure() {
@@ -97,11 +138,12 @@ func (observer *Observer) Configure() {
 			}
 			return nil
 		}).Run()
+	observer.Metadata.Name = observer.Spec.Project
 
 	huh.NewInput().
 		Title("Execution user").
 		Description("User which is used to run the reconcile with. Must have read/write access to .spec.destination").
-		Value(&observer.Spec.User).
+		Value(&observer.Metadata.User).
 		Validate(func(projectName string) error {
 			if len(projectName) <= 0 {
 				return errors.New("you must enter a project name")
