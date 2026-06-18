@@ -1,0 +1,33 @@
+.git
+.gitignore
+.env
+.env.*
+
+# Local runtime/config secrets
+.config/
+**/*.key
+**/*age.key
+**/*id_rsa
+**/*id_ed25519
+.ssh/
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*credentials*.json
+**/*credential*.json
+**/credentials.json
+**/kubeconfig
+**/.kube/
+**/id_dsa
+**/id_ecdsa
+**/known_hosts
+
+# Build/test artifacts
+bin/
+dist/
+tmp/
+
+# Editor/OS metadata
+.DS_Store
+.idea/
+.vscode/

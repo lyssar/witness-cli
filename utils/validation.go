@@ -50,7 +50,11 @@ func DirIsEmpty(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			slog.Debug("failed to close directory handle", "path", path, "error", closeErr.Error())
+		}
+	}()
 	_, err = f.Readdirnames(1)
 	return err == io.EOF
 }
@@ -69,4 +73,9 @@ func BinaryExists(name string) (bool, string) {
 func IsRunningAsSysd() bool {
 	_, sysdStarted := sysd.GetInvocationID()
 	return sysdStarted
+}
+
+// ShellQuote safely single-quotes a shell argument.
+func ShellQuote(arg string) string {
+	return "'" + strings.ReplaceAll(arg, "'", "'\\''") + "'"
 }

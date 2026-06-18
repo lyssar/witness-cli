@@ -3,10 +3,6 @@
   "instructions": [
     "AGENTS.md"
   ],
-  "mode": {
-    "build": {},
-    "plan": {}
-  },
   "permission": {
     "edit": "allow",
     "bash": "ask",

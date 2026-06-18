@@ -77,6 +77,7 @@ func NewObserver(cmd *cobra.Command) Observer {
 
 	observer := &Observer{}
 	err = defaults.Set(observer)
+	utils.CheckErr(err)
 	observer.Metadata = *metadata
 	observer.Spec.Timeout = *timeout
 	observer.Spec = *spec
@@ -95,7 +96,7 @@ func NewObserver(cmd *cobra.Command) Observer {
 func NewObserverFromManifest(manifestFile, ageKeyFile string) (Observer, error) {
 	observer := &Observer{}
 	if !utils.FileExists(manifestFile) {
-		return *observer, fmt.Errorf("Manifest file %s does not exist", manifestFile)
+		return *observer, fmt.Errorf("manifest file %s does not exist", manifestFile)
 	}
 
 	manifestContent, err := os.ReadFile(manifestFile)
@@ -112,8 +113,10 @@ func NewObserverFromManifest(manifestFile, ageKeyFile string) (Observer, error) 
 }
 
 func (observer *Observer) Configure() {
+	var err error
+
 	if observer.AgeKeyFile == "" {
-		huh.NewInput().
+		err = huh.NewInput().
 			Title("Path age key to use for secret encryption").
 			Value(&observer.AgeKeyFile).
 			Validate(func(ageKeyFile string) error {
@@ -123,12 +126,13 @@ func (observer *Observer) Configure() {
 				return nil
 			}).
 			Run()
-		var err error
+		utils.CheckErr(err)
+
 		observer.AgeKeyFile, err = utils.NormalizeHomePath(observer.AgeKeyFile)
 		utils.CheckErr(err)
 	}
 
-	huh.NewInput().
+	err = huh.NewInput().
 		Title("Observer name").
 		Description("Name of the observer service").
 		Value(&observer.Spec.Project).
@@ -138,9 +142,10 @@ func (observer *Observer) Configure() {
 			}
 			return nil
 		}).Run()
+	utils.CheckErr(err)
 	observer.Metadata.Name = observer.Spec.Project
 
-	huh.NewInput().
+	err = huh.NewInput().
 		Title("Execution user").
 		Description("User which is used to run the reconcile with. Must have read/write access to .spec.destination").
 		Value(&observer.Metadata.User).
@@ -151,6 +156,7 @@ func (observer *Observer) Configure() {
 			return nil
 		}).
 		Run()
+	utils.CheckErr(err)
 
 	// TODO use later for Application
 	// huh.NewSelect[string]().
@@ -163,19 +169,20 @@ func (observer *Observer) Configure() {
 	//     ).
 	//     Value(&observer.Spec.Handler)
 
-	huh.NewInput().
+	err = huh.NewInput().
 		Title("Root destination path").
 		Description("The root path to sync the repository into").
 		Value(&observer.Spec.Destination).
 		Validate(func(destination string) error {
 			if len(destination) <= 0 {
-				return errors.New("you must enter an absolut path for destination.")
+				return errors.New("you must enter an absolut path for destination")
 			}
 			return nil
 		}).
 		Run()
+	utils.CheckErr(err)
 
-	huh.NewInput().
+	err = huh.NewInput().
 		Title("Repository url").
 		Description("The repository to reconcile from").
 		Value(&observer.Spec.Source.RepoURL).
@@ -186,20 +193,21 @@ func (observer *Observer) Configure() {
 			return nil
 		}).
 		Run()
+	utils.CheckErr(err)
 
-		// TODO use later for application
-		// huh.NewInput().
-		//   		Title("[Source] Path").
-		//    	Value(&observer.Spec.Source.Path).
-		//   		Validate(func(path string) error {
-		//   			if len(path) <= 0 {
+	// TODO use later for application
+	// huh.NewInput().
+	//   		Title("[Source] Path").
+	//    	Value(&observer.Spec.Source.Path).
+	//   		Validate(func(path string) error {
+	//   			if len(path) <= 0 {
 	//   				return errors.New("you must enter a existing git repository")
 	//   			}
 	//   			return nil
 	//   		}).
 	//   		Run()
 
-	huh.NewInput().
+	err = huh.NewInput().
 		Title("Target revision").
 		Description("Target git revision to reconcile from").
 		Value(&observer.Spec.Source.TargetRevision).
@@ -210,8 +218,9 @@ func (observer *Observer) Configure() {
 			return nil
 		}).
 		Run()
+	utils.CheckErr(err)
 
-	huh.NewInput().
+	err = huh.NewInput().
 		Title("Git User").
 		Description("The use to use fetch changes on reconcilation").
 		Value(&observer.Spec.Source.User).
@@ -222,8 +231,9 @@ func (observer *Observer) Configure() {
 			return nil
 		}).
 		Run()
+	utils.CheckErr(err)
 
-	huh.NewInput().
+	err = huh.NewInput().
 		Title("Git access token").
 		Description("The access token to use fetch changes on reconcilation").
 		EchoMode(huh.EchoModePassword).
@@ -235,6 +245,7 @@ func (observer *Observer) Configure() {
 			return nil
 		}).
 		Run()
+	utils.CheckErr(err)
 	// for {
 	// 	var secretKey string
 	// 	var secretValue string
@@ -271,9 +282,13 @@ func (observer *Observer) WriteConfig() {
 	f, err := os.Create(pathOut)
 	utils.CheckErr(err)
 
-	defer f.Close()
+	defer func() {
+		err := f.Close()
+		utils.CheckErr(err)
+	}()
 
 	err = renderer.Render("observer", observer, f)
 	utils.CheckErr(err)
-	f.Sync()
+	err = f.Sync()
+	utils.CheckErr(err)
 }

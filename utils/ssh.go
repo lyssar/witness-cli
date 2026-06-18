@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/charmbracelet/huh"
@@ -13,6 +15,8 @@ import (
 	"github.com/melbahja/goph"
 	"golang.org/x/crypto/ssh"
 )
+
+var unixUsernamePattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 
 var (
 	sshConfig        *ssh_config.Config
@@ -44,9 +48,30 @@ func NewRemote(host string, sshUser string, sshKey string) (*RemoteClient, error
 func (r *RemoteClient) RunSudo(command string, pass string, user *string) ([]byte, error) {
 	userSwitch := ""
 	if user != nil {
-		userSwitch = fmt.Sprintf(" -u %s ", *user)
+		if !unixUsernamePattern.MatchString(*user) {
+			return nil, fmt.Errorf("invalid sudo user: %s", *user)
+		}
+		userSwitch = fmt.Sprintf(" -u %s", ShellQuote(*user))
 	}
-	return r.SSH.Run(fmt.Sprintf("echo '%s' | sudo -S -p ''%s bash -c '%s'", pass, userSwitch, command))
+
+	remoteCmd := fmt.Sprintf("sudo -S -p ''%s -- bash -c %s", userSwitch, ShellQuote(command))
+
+	sess, err := r.SSH.NewSession()
+	if err != nil {
+		return nil, err
+	}
+
+	sess.Stdin = strings.NewReader(pass + "\n")
+	out, runErr := sess.CombinedOutput(remoteCmd)
+	closeErr := sess.Close()
+	if runErr != nil {
+		return out, runErr
+	}
+	if closeErr != nil {
+		return out, closeErr
+	}
+
+	return out, nil
 }
 
 func (r RemoteClient) TransferFile(srcFile string, dstFile string) {
@@ -101,9 +126,7 @@ func newSSHClient(host string, sshUser string, sshKey string) (*goph.Client, err
 		return nil, err
 	}
 
-	client, err := goph.New(sshUser, configuredHost, auth)
-
-	return client, nil
+	return goph.New(sshUser, configuredHost, auth)
 }
 
 func getNormaluedSSHKey(sshKey string) (string, string, error) {
@@ -125,7 +148,10 @@ func getNormaluedSSHKey(sshKey string) (string, string, error) {
 	_, err = ssh.ParsePrivateKey(sshKeyPemBytes)
 
 	if errors.Is(err, passErr) {
-		huh.NewInput().Title("SSH key passphrase").EchoMode(huh.EchoModePassword).Value(&passphrase).Run()
+		err = huh.NewInput().Title("SSH key passphrase").EchoMode(huh.EchoModePassword).Value(&passphrase).Run()
+		if err != nil {
+			return "", "", fmt.Errorf("asking for ssh key passphrase: %w", err)
+		}
 		_, err = ssh.ParsePrivateKeyWithPassphrase(sshKeyPemBytes, []byte(passphrase))
 	}
 

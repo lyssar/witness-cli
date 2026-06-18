@@ -12,6 +12,12 @@ vars:
   CGO_ENABLED: 0
   GOFLAGS: -trimpath -ldflags="-s -w"
   TARGET_DIR: '{{.DIR | default "."}}'
+  DOCKER_IMAGE: '{{default "skuld-cli-local:latest" .DOCKER_IMAGE}}'
+  DOCKER_CONTAINER: '{{default "skuld-cli-local" .DOCKER_CONTAINER}}'
+  CONTAINER_CONFIG_ROOT: '{{default "/home/skuld-daemon/.config/skuld-cli/skuldd" .CONTAINER_CONFIG_ROOT}}'
+  MANIFEST_SRC: '{{default (printf "%s/.config/skuld-cli/skuldd/manifest.yaml" (env "HOME")) .MANIFEST_SRC}}'
+  AGE_KEY_SRC: '{{default (printf "%s/.config/skuld-cli/skuldd/age.key" (env "HOME")) .AGE_KEY_SRC}}'
+  SKULD_ARGS: '{{default "--help" .SKULD_ARGS}}'
 
 tasks:
   default:
@@ -31,7 +37,7 @@ tasks:
 
   build:
     summary: Build the Go application
-    desc: Builds the golang applicaiton into tmp
+    desc: Builds the golang application into tmp
     deps: [clean]
     cmds:
       - printf "🔨 Building {{.APP}}...\n"
@@ -73,7 +79,7 @@ tasks:
       - cmd: '{{.TMP_BIN}} init -d'
     silent: true
 
-  new-add:
+  new-app:
     summary: Run the 'new-app' command
     desc: Build & Run new-app command
     deps: [build]
@@ -90,4 +96,321 @@ tasks:
     cmds:
       - printf "🔄 Running 'reconcile' command...\n"
       - cmd: '{{.TMP_BIN}} reconcile -d ~/.config/skuld-cli/skuldd/'
+    silent: true
+
+  docker:build:
+    summary: Build local Docker image for skuld-cli testing
+    desc: Builds a local image containing /usr/local/bin/skuld-cli and runtime dependencies
+    env:
+      DOCKER_IMAGE: '{{.DOCKER_IMAGE}}'
+    deps: [docker:validate-shape]
+    cmds:
+      - printf "🐳 Building image %s...\n" "$DOCKER_IMAGE"
+      - docker build -t "$DOCKER_IMAGE" -f Dockerfile .
+    silent: true
+
+  docker:validate-shape:
+    internal: true
+    summary: Validate Docker task input value shapes before use
+    env:
+      DOCKER_IMAGE: '{{.DOCKER_IMAGE}}'
+      DOCKER_CONTAINER: '{{.DOCKER_CONTAINER}}'
+      CONTAINER_CONFIG_ROOT: '{{.CONTAINER_CONFIG_ROOT}}'
+      MANIFEST_SRC: '{{.MANIFEST_SRC}}'
+      AGE_KEY_SRC: '{{.AGE_KEY_SRC}}'
+      SKULD_ARGS: '{{.SKULD_ARGS}}'
+    cmds:
+      - |
+        set -eu
+
+        die() {
+          printf "❌ %s\n" "$1" >&2
+          exit 1
+        }
+
+        ensure_no_unsafe_chars() {
+          value="$1"
+          label="$2"
+
+          case "$value" in
+            *[![:print:]]*) die "$label contains non-printable characters" ;;
+          esac
+
+          case "$value" in
+            *[\"\'\`\$\(\)\;\&\|\<\>\{\}\!\n\r\t]*)
+              die "$label contains forbidden shell metacharacters"
+              ;;
+          esac
+        }
+
+        normalize_host_path() {
+          value="$1"
+          case "$value" in
+            "") die "host path is empty" ;;
+            "~") value="$HOME" ;;
+            ~/*) value="$HOME/${value#~/}" ;;
+          esac
+
+          case "$value" in
+            /*) ;;
+            *) die "host path must be absolute after HOME expansion: $1" ;;
+          esac
+
+          case "$value" in
+            *".."*) die "host path must not contain '..' segments: $value" ;;
+          esac
+
+          printf "%s" "$value"
+        }
+
+        validate_image() {
+          value="$1"
+          case "$value" in
+            "") die "DOCKER_IMAGE must not be empty" ;;
+          esac
+          case "$value" in
+            *[!A-Za-z0-9._:/-]*) die "DOCKER_IMAGE has unsupported characters: $value" ;;
+          esac
+          case "$value" in
+            [A-Za-z0-9]*|[a-z0-9]*/*|[a-z0-9]*:*|[a-z0-9]*/*:*) ;;
+            *) die "DOCKER_IMAGE must start with an alphanumeric character: $value" ;;
+          esac
+        }
+
+        validate_container() {
+          value="$1"
+          case "$value" in
+            "") die "DOCKER_CONTAINER must not be empty" ;;
+          esac
+          case "$value" in
+            *[!A-Za-z0-9_.-]*) die "DOCKER_CONTAINER has unsupported characters: $value" ;;
+          esac
+          case "$value" in
+            [A-Za-z0-9]*) ;;
+            *) die "DOCKER_CONTAINER must start with an alphanumeric character: $value" ;;
+          esac
+        }
+
+        validate_container_root() {
+          value="$1"
+          case "$value" in
+            "") die "CONTAINER_CONFIG_ROOT must not be empty" ;;
+          esac
+          case "$value" in
+            /*) ;;
+            *) die "CONTAINER_CONFIG_ROOT must be absolute: $value" ;;
+          esac
+          case "$value" in
+            *[!A-Za-z0-9_./-]*) die "CONTAINER_CONFIG_ROOT has unsupported characters: $value" ;;
+          esac
+          case "$value" in
+            *".."*) die "CONTAINER_CONFIG_ROOT must not contain '..' segments: $value" ;;
+          esac
+        }
+
+        validate_skuld_args() {
+          value="$1"
+          case "$value" in
+            "") return 0 ;;
+          esac
+          case "$value" in
+            *[!A-Za-z0-9_./:=,@+\ -]*)
+              die "SKULD_ARGS contains unsupported characters"
+              ;;
+          esac
+          case "$value" in
+            *"  "*) die "SKULD_ARGS must not contain repeated spaces" ;;
+          esac
+        }
+
+        validate_image "$DOCKER_IMAGE"
+        validate_container "$DOCKER_CONTAINER"
+        validate_container_root "$CONTAINER_CONFIG_ROOT"
+        validate_skuld_args "$SKULD_ARGS"
+
+        MANIFEST_SRC="$(normalize_host_path "$MANIFEST_SRC")"
+        AGE_KEY_SRC="$(normalize_host_path "$AGE_KEY_SRC")"
+
+        ensure_no_unsafe_chars "$MANIFEST_SRC" "MANIFEST_SRC"
+        ensure_no_unsafe_chars "$AGE_KEY_SRC" "AGE_KEY_SRC"
+        ensure_no_unsafe_chars "$CONTAINER_CONFIG_ROOT" "CONTAINER_CONFIG_ROOT"
+
+
+  docker:validate-runtime-files:
+    internal: true
+    summary: Validate runtime config files exist before use
+    deps: [docker:validate-shape]
+    env:
+      MANIFEST_SRC: '{{.MANIFEST_SRC}}'
+      AGE_KEY_SRC: '{{.AGE_KEY_SRC}}'
+    cmds:
+      - |
+        set -eu
+
+        die() {
+          printf "❌ %s\n" "$1" >&2
+          exit 1
+        }
+
+        normalize_host_path() {
+          value="$1"
+          case "$value" in
+            "") die "host path is empty" ;;
+            "~") value="$HOME" ;;
+            ~/*) value="$HOME/${value#~/}" ;;
+          esac
+
+          case "$value" in
+            /*) ;;
+            *) die "host path must be absolute after HOME expansion: $1" ;;
+          esac
+
+          case "$value" in
+            *".."*) die "host path must not contain '..' segments: $value" ;;
+          esac
+
+          printf "%s" "$value"
+        }
+
+        MANIFEST_SRC="$(normalize_host_path "$MANIFEST_SRC")"
+        AGE_KEY_SRC="$(normalize_host_path "$AGE_KEY_SRC")"
+
+        [ -f "$MANIFEST_SRC" ] || die "MANIFEST_SRC file not found: $MANIFEST_SRC"
+        [ -f "$AGE_KEY_SRC" ] || die "AGE_KEY_SRC file not found: $AGE_KEY_SRC"
+    
+  docker:create:
+    summary: Create test container and inject local config files
+    desc: Creates a container, copies manifest/age key with docker cp, and sets restrictive file permissions
+    deps: [docker:build, docker:validate-runtime-files]
+    env:
+      DOCKER_IMAGE: '{{.DOCKER_IMAGE}}'
+      DOCKER_CONTAINER: '{{.DOCKER_CONTAINER}}'
+      CONTAINER_CONFIG_ROOT: '{{.CONTAINER_CONFIG_ROOT}}'
+      MANIFEST_SRC: '{{.MANIFEST_SRC}}'
+      AGE_KEY_SRC: '{{.AGE_KEY_SRC}}'
+    cmds:
+      - |
+        set -eu
+        case "$MANIFEST_SRC" in
+          "~") MANIFEST_SRC="$HOME" ;;
+          ~/*) MANIFEST_SRC="$HOME/${MANIFEST_SRC#~/}" ;;
+        esac
+        case "$AGE_KEY_SRC" in
+          "~") AGE_KEY_SRC="$HOME" ;;
+          ~/*) AGE_KEY_SRC="$HOME/${AGE_KEY_SRC#~/}" ;;
+        esac
+
+        printf "🧪 Creating container %s from image %s...\n" "$DOCKER_CONTAINER" "$DOCKER_IMAGE"
+        docker rm -f "$DOCKER_CONTAINER" >/dev/null 2>&1 || true
+        docker create --name "$DOCKER_CONTAINER" --entrypoint sh "$DOCKER_IMAGE" -c 'while true; do sleep 3600; done'
+        docker cp "$MANIFEST_SRC" "$DOCKER_CONTAINER:$CONTAINER_CONFIG_ROOT/manifest.yaml"
+        docker cp "$AGE_KEY_SRC" "$DOCKER_CONTAINER:$CONTAINER_CONFIG_ROOT/age.key"
+        docker start "$DOCKER_CONTAINER"
+      - |
+        docker exec -u root "$DOCKER_CONTAINER" sh -c '\
+          root='"'"'$CONTAINER_CONFIG_ROOT'"'"'; \
+          chown -R skuld-daemon:skuld-daemon "$root" && \
+          chmod 0700 "$root" && \
+          chmod 0600 "$root/age.key" && \
+          chmod 0640 "$root/manifest.yaml"\
+        '
+      - printf "✅ Container ready: %s\n" "$DOCKER_CONTAINER"
+    silent: true
+
+  docker:run:
+    summary: Ensure test container exists and is running
+    desc: Creates the container if absent, otherwise starts existing container
+    deps: [docker:validate-shape]
+    env:
+      DOCKER_IMAGE: '{{.DOCKER_IMAGE}}'
+      DOCKER_CONTAINER: '{{.DOCKER_CONTAINER}}'
+      CONTAINER_CONFIG_ROOT: '{{.CONTAINER_CONFIG_ROOT}}'
+      MANIFEST_SRC: '{{.MANIFEST_SRC}}'
+      AGE_KEY_SRC: '{{.AGE_KEY_SRC}}'
+    cmds:
+      - |
+        if docker inspect "$DOCKER_CONTAINER" >/dev/null 2>&1; then
+          printf "▶️  Starting existing container %s...\n" "$DOCKER_CONTAINER"
+          docker start "$DOCKER_CONTAINER" >/dev/null
+        else
+          task docker:create \
+            DOCKER_IMAGE="$DOCKER_IMAGE" \
+            DOCKER_CONTAINER="$DOCKER_CONTAINER" \
+            CONTAINER_CONFIG_ROOT="$CONTAINER_CONFIG_ROOT" \
+            MANIFEST_SRC="$MANIFEST_SRC" \
+            AGE_KEY_SRC="$AGE_KEY_SRC"
+        fi
+    silent: true
+
+  docker:skuld:
+    summary: Run skuld-cli inside the test container
+    desc: Executes /usr/local/bin/skuld-cli as the non-root skuld-daemon user
+    env:
+      DOCKER_CONTAINER: '{{.DOCKER_CONTAINER}}'
+      SKULD_ARGS: '{{.SKULD_ARGS}}'
+    deps: [docker:run]
+    cmds:
+      - printf "⚙️  Running skuld-cli in %s with args: %s\n" "$DOCKER_CONTAINER" "$SKULD_ARGS"
+      - |
+        set -eu
+        set -f
+
+        if [ -n "$SKULD_ARGS" ]; then
+          set -- $SKULD_ARGS
+        else
+          set --
+        fi
+
+        docker exec -u skuld-daemon "$DOCKER_CONTAINER" /usr/local/bin/skuld-cli "$@"
+    silent: true
+
+  docker:status:
+    summary: Show local Docker image/container status
+    desc: Prints configured Docker values and current container runtime state
+    deps: [docker:validate-shape]
+    env:
+      DOCKER_IMAGE: '{{.DOCKER_IMAGE}}'
+      DOCKER_CONTAINER: '{{.DOCKER_CONTAINER}}'
+      MANIFEST_SRC: '{{.MANIFEST_SRC}}'
+      AGE_KEY_SRC: '{{.AGE_KEY_SRC}}'
+      CONTAINER_CONFIG_ROOT: '{{.CONTAINER_CONFIG_ROOT}}'
+    cmds:
+      - printf "DOCKER_IMAGE=%s\n" "$DOCKER_IMAGE"
+      - printf "DOCKER_CONTAINER=%s\n" "$DOCKER_CONTAINER"
+      - printf "MANIFEST_SRC=%s\n" "$MANIFEST_SRC"
+      - printf "AGE_KEY_SRC=%s\n" "$AGE_KEY_SRC"
+      - printf "CONTAINER_CONFIG_ROOT=%s\n" "$CONTAINER_CONFIG_ROOT"
+      - docker ps -a --filter "name=^/$DOCKER_CONTAINER$"
+    silent: true
+
+  docker:show-config:
+    summary: Show effective local Docker task configuration
+    desc: Displays resolved defaults and overrides for image/container/config paths
+    deps: [docker:validate-shape]
+    env:
+      DOCKER_IMAGE: '{{.DOCKER_IMAGE}}'
+      DOCKER_CONTAINER: '{{.DOCKER_CONTAINER}}'
+      MANIFEST_SRC: '{{.MANIFEST_SRC}}'
+      AGE_KEY_SRC: '{{.AGE_KEY_SRC}}'
+      CONTAINER_CONFIG_ROOT: '{{.CONTAINER_CONFIG_ROOT}}'
+    cmds:
+      - printf "DOCKER_IMAGE=%s\n" "$DOCKER_IMAGE"
+      - printf "DOCKER_CONTAINER=%s\n" "$DOCKER_CONTAINER"
+      - printf "MANIFEST_SRC=%s\n" "$MANIFEST_SRC"
+      - printf "AGE_KEY_SRC=%s\n" "$AGE_KEY_SRC"
+      - printf "CONTAINER_CONFIG_ROOT=%s\n" "$CONTAINER_CONFIG_ROOT"
+    silent: true
+
+  docker:cleanup:
+    summary: Remove local Docker test artifacts
+    desc: Stops/removes the test container and optionally removes the local test image
+    deps: [docker:validate-shape]
+    env:
+      DOCKER_IMAGE: '{{.DOCKER_IMAGE}}'
+      DOCKER_CONTAINER: '{{.DOCKER_CONTAINER}}'
+    cmds:
+      - printf "🧹 Removing container %s...\n" "$DOCKER_CONTAINER"
+      - docker rm -f "$DOCKER_CONTAINER" >/dev/null 2>&1 || true
+      - printf "🧹 Removing image %s...\n" "$DOCKER_IMAGE"
+      - docker rmi "$DOCKER_IMAGE" >/dev/null 2>&1 || true
     silent: true

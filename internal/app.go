@@ -46,6 +46,7 @@ func NewApp(cmd *cobra.Command) App {
 
 	app := &App{}
 	err = defaults.Set(app)
+	utils.CheckErr(err)
 	app.Metadata = *metadata
 	app.Spec = *spec
 
@@ -63,7 +64,7 @@ func NewApp(cmd *cobra.Command) App {
 func NewAppFromManifest(manifestFile, ageKeyFile string) (App, error) {
 	app := &App{}
 	if !utils.FileExists(manifestFile) {
-		return *app, fmt.Errorf("Manifest file %s does not exist", manifestFile)
+		return *app, fmt.Errorf("manifest file %s does not exist", manifestFile)
 	}
 
 	manifestContent, err := os.ReadFile(manifestFile)
@@ -81,7 +82,7 @@ func NewAppFromManifest(manifestFile, ageKeyFile string) (App, error) {
 
 func (app *App) Configure() {
 	if app.AgeKeyFile == "" {
-		huh.NewInput().
+		err := huh.NewInput().
 			Title("Path age key to use for secret encryption").
 			Value(&app.AgeKeyFile).
 			Validate(func(ageKeyFile string) error {
@@ -91,12 +92,13 @@ func (app *App) Configure() {
 				return nil
 			}).
 			Run()
-		var err error
+		utils.CheckErr(err)
+
 		app.AgeKeyFile, err = utils.NormalizeHomePath(app.AgeKeyFile)
 		utils.CheckErr(err)
 	}
 
-	huh.NewInput().
+	err := huh.NewInput().
 		Title("App name").
 		Description("Name of the app service").
 		Value(&app.Metadata.Name).
@@ -106,8 +108,9 @@ func (app *App) Configure() {
 			}
 			return nil
 		}).Run()
+	utils.CheckErr(err)
 
-	huh.NewSelect[string]().
+	err = huh.NewSelect[string]().
 		Title("Handler type").
 		Options(
 			huh.NewOption("Docker", "docker"),
@@ -115,9 +118,11 @@ func (app *App) Configure() {
 			huh.NewOption("Podman Compose", "podman-compose"),
 			huh.NewOption("Shell", "shell"),
 		).
-		Value(&app.Spec.Handler)
+		Value(&app.Spec.Handler).
+		Run()
+	utils.CheckErr(err)
 
-	huh.NewInput().
+	err = huh.NewInput().
 		Title("Repository url").
 		Description("The repository to reconcile from").
 		Value(&app.Spec.Source.RepoURL).
@@ -128,10 +133,11 @@ func (app *App) Configure() {
 			return nil
 		}).
 		Run()
+	utils.CheckErr(err)
 
 	app.Spec.Source.Path = strings.ReplaceAll(strings.ToLower(app.Metadata.Name), " ", "-")
 
-	huh.NewInput().
+	err = huh.NewInput().
 		Title("App destination").
 		Description("App target destination in repo").
 		Value(&app.Spec.Source.Path).
@@ -142,7 +148,9 @@ func (app *App) Configure() {
 			return nil
 		}).
 		Run()
-	huh.NewInput().
+	utils.CheckErr(err)
+
+	err = huh.NewInput().
 		Title("Target revision").
 		Description("Target git revision to reconcile from").
 		Value(&app.Spec.Source.TargetRevision).
@@ -153,8 +161,9 @@ func (app *App) Configure() {
 			return nil
 		}).
 		Run()
+	utils.CheckErr(err)
 
-	huh.NewInput().
+	err = huh.NewInput().
 		Title("Git User").
 		Description("The use to use fetch changes on reconcilation").
 		Value(&app.Spec.Source.User).
@@ -165,8 +174,9 @@ func (app *App) Configure() {
 			return nil
 		}).
 		Run()
+	utils.CheckErr(err)
 
-	huh.NewInput().
+	err = huh.NewInput().
 		Title("Git access token").
 		Description("The access token to use fetch changes on reconcilation").
 		EchoMode(huh.EchoModePassword).
@@ -178,15 +188,17 @@ func (app *App) Configure() {
 			return nil
 		}).
 		Run()
+	utils.CheckErr(err)
 
 	for {
 		var inventoryEntry string
 
-		huh.NewInput().
+		err = huh.NewInput().
 			Title("Enter an inventory item to pull file or folder is possible").
 			Description("Leave empty if nothing to add").
 			Value(&inventoryEntry).
 			Run()
+		utils.CheckErr(err)
 
 		if inventoryEntry == "" {
 			break
@@ -196,29 +208,33 @@ func (app *App) Configure() {
 	}
 
 	var addSecretFile bool
-	huh.NewConfirm().
+	err = huh.NewConfirm().
 		Title("Add add secret files?").
 		Description("Secret files are handled like the inventory but it is asumed to be encrypted with the age key").
 		Value(&addSecretFile).
 		Run()
+	utils.CheckErr(err)
 
 	if addSecretFile {
 		for {
 			var file string
 
-			huh.NewInput().
+			err = huh.NewInput().
 				Title("File").
 				Validate(huh.ValidateNotEmpty()).
 				Value(&file).
 				Run()
+			utils.CheckErr(err)
 
 			app.Spec.SecretFiles = append(app.Spec.SecretFiles, file)
 
 			var addAnother bool
-			huh.NewConfirm().
+			err = huh.NewConfirm().
 				Title("Add another secret file?").
 				Value(&addAnother).
 				Run()
+			utils.CheckErr(err)
+
 			if !addAnother {
 				break
 			}
@@ -237,9 +253,13 @@ func (app *App) WriteConfig() {
 	f, err := os.Create(pathOut)
 	utils.CheckErr(err)
 
-	defer f.Close()
+	defer func() {
+		err := f.Close()
+		utils.CheckErr(err)
+	}()
 
 	err = renderer.Render("application", app, f)
 	utils.CheckErr(err)
-	f.Sync()
+	err = f.Sync()
+	utils.CheckErr(err)
 }

@@ -3,6 +3,7 @@ package internal
 import (
 	"log/slog"
 
+	"github.com/lyssar/skuld-cli/internal/reconcile"
 	"github.com/lyssar/skuld-cli/utils"
 	"github.com/spf13/cobra"
 )
@@ -37,17 +38,7 @@ func NewAppCmd(cmd *cobra.Command, args []string) error {
 
 func ReconcileCmd(cmd *cobra.Command, args []string) error {
 	slog.Info("Start reconcilation run")
-	reconcileRun := NewReconcileRun(args[0])
-	if ok, err := reconcileRun.Validate(); !ok {
-		return err
-	}
-
-	err := reconcileRun.LoadManifest()
-	if err != nil {
-		return err
-	}
-
-	err = reconcileRun.Reconcile()
+	err := reconcile.NewRunner(args[0]).Run(cmd.Context())
 	if err != nil {
 		return err
 	}
