@@ -1,23 +1,33 @@
-FROM golang:1.25.5-alpine AS builder
+FROM debian:bookworm-slim
 
-WORKDIR /src
+ENV DEBIAN_FRONTEND=noninteractive \
+    container=docker
 
-COPY go.mod go.sum ./
-RUN go mod download
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        age \
+        ca-certificates \
+        git \
+        openssh-server \
+        procps \
+        rsync \
+        sudo \
+        systemd \
+        systemd-sysv && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/skuld-cli .
+RUN useradd --create-home --shell /bin/bash skuld-deploy && \
+    useradd --create-home --shell /bin/bash skuld-daemon && \
+    install -d -m 0700 -o skuld-deploy -g skuld-deploy /home/skuld-deploy/.ssh && \
+    install -d -m 0700 -o skuld-daemon -g skuld-daemon /home/skuld-daemon/.config/skuld-cli && \
+    install -d -m 0755 /var/run/sshd && \
+    printf 'skuld-deploy ALL=(ALL) NOPASSWD: ALL\n' >/etc/sudoers.d/skuld-deploy && \
+    chmod 0440 /etc/sudoers.d/skuld-deploy && \
+    ln -sf /lib/systemd/system/ssh.service /etc/systemd/system/multi-user.target.wants/ssh.service
 
-FROM alpine:3.22 AS runtime
+VOLUME ["/sys/fs/cgroup"]
 
-RUN apk add --no-cache ca-certificates git && \
-    adduser -D -h /home/skuld-daemon skuld-daemon && \
-    install -d -m 0700 -o skuld-daemon -g skuld-daemon /home/skuld-daemon/.config/skuld-cli/skuldd
+STOPSIGNAL SIGRTMIN+3
 
-COPY --from=builder /out/skuld-cli /usr/local/bin/skuld-cli
-
-USER skuld-daemon
-WORKDIR /home/skuld-daemon
-
-ENTRYPOINT ["/usr/local/bin/skuld-cli"]
-CMD ["--help"]
+CMD ["/sbin/init"]

@@ -23,6 +23,8 @@ var (
 	deployProjectNamePattern  = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 )
 
+const deploySudoPasswordEnv = "SKULD_SUDO_PASSWORD"
+
 func validateDeploymentInputs(projectName string, username string, destination string) error {
 	if !deployProjectNamePattern.MatchString(strings.ToLower(projectName)) {
 		return fmt.Errorf("invalid project name: %s", projectName)
@@ -94,6 +96,10 @@ func NewDeployHandler(cmd *cobra.Command) *DeployHandler {
 
 func (dh *DeployHandler) AskForSudoer() {
 	if dh.Sudoer == "" {
+		dh.Sudoer = strings.TrimSpace(os.Getenv(deploySudoPasswordEnv))
+	}
+
+	if dh.Sudoer == "" {
 		err := huh.NewInput().
 			Title("Enter sudoer password for deploy user").
 			EchoMode(huh.EchoModePassword).
@@ -107,6 +113,25 @@ func (dh *DeployHandler) AskForSudoer() {
 			Run()
 		utils.CheckErr(err)
 	}
+}
+
+func (dh *DeployHandler) runSudo(client *utils.RemoteClient, command string, user *string) ([]byte, error) {
+	out, err := client.RunSudo(command, dh.Sudoer, user)
+	if err == nil {
+		return out, nil
+	}
+
+	if dh.Sudoer != "" || !sudoPasswordPromptRequired(out) {
+		return out, err
+	}
+
+	dh.AskForSudoer()
+	return client.RunSudo(command, dh.Sudoer, user)
+}
+
+func sudoPasswordPromptRequired(out []byte) bool {
+	message := strings.ToLower(string(out))
+	return strings.Contains(message, "password is required") || strings.Contains(message, "a terminal is required")
 }
 
 func (dh *DeployHandler) Validate() error {
@@ -125,8 +150,6 @@ func (dh *DeployHandler) Validate() error {
 			return fmt.Errorf("prompting for age key file: %w", err)
 		}
 	}
-
-	dh.AskForSudoer()
 
 	remoteClient, err := utils.NewRemote(dh.SSH.Host, dh.SSH.User, *dh.SSH.Key)
 	if err != nil {
@@ -152,7 +175,7 @@ func (dh *DeployHandler) Validate() error {
 	}
 
 	serviceName := strings.ToLower(observer.Metadata.Name)
-	stdOut, stdErr = remoteClient.RunSudo(fmt.Sprintf("S=%s.service; T=${S%%.service}.timer; systemctl show -p LoadState --value \"$T\"", utils.ShellQuote(serviceName)), dh.Sudoer, nil)
+	stdOut, stdErr = dh.runSudo(remoteClient, fmt.Sprintf("S=%s.service; T=${S%%.service}.timer; systemctl show -p LoadState --value \"$T\"", utils.ShellQuote(serviceName)), nil)
 	if stdErr != nil {
 		return fmt.Errorf("checkup failed: %s (%s)", string(stdOut), stdErr)
 	}
@@ -171,13 +194,13 @@ func (dh *DeployHandler) Validate() error {
 		}
 	}
 
-	stdOut, stdErr = remoteClient.RunSudo("command -v skuld-cli", dh.Sudoer, &observer.Metadata.User)
+	stdOut, stdErr = dh.runSudo(remoteClient, "command -v skuld-cli", &observer.Metadata.User)
 
 	if stdErr != nil {
 		return fmt.Errorf("skuld-cli not on target host found %s (error %s)", string(stdOut), stdErr)
 	}
 
-	stdOut, stdErr = remoteClient.RunSudo("command -v age", dh.Sudoer, &observer.Metadata.User)
+	stdOut, stdErr = dh.runSudo(remoteClient, "command -v age", &observer.Metadata.User)
 
 	if stdErr != nil {
 		return fmt.Errorf("age not on target host found %s. (error %s)", string(stdOut), stdErr)
@@ -210,22 +233,22 @@ func (dh *DeployHandler) ReloadSystemD(observer Observer) error {
 	}
 
 	utils.LogInfo("Verify systemd service", "service", systemdService)
-	analyzeOut, err := client.RunSudo(fmt.Sprintf("systemd-analyze verify %s", utils.ShellQuote(systemdService)), dh.Sudoer, nil)
+	analyzeOut, err := dh.runSudo(client, fmt.Sprintf("systemd-analyze verify %s", utils.ShellQuote(systemdService)), nil)
 	if string(analyzeOut) != "" || err != nil {
 		return fmt.Errorf("error during systemd analyzation: %s (%s)", string(analyzeOut), err)
 	}
 
-	reloadOut, err := client.RunSudo("systemctl daemon-reload", dh.Sudoer, nil)
+	reloadOut, err := dh.runSudo(client, "systemctl daemon-reload", nil)
 	if string(reloadOut) != "" || err != nil {
 		return fmt.Errorf("error during daemon-reload: %s (%s)", string(analyzeOut), err)
 	}
 
-	restartOut, err := client.RunSudo(fmt.Sprintf("systemctl reload-or-restart %s", utils.ShellQuote(projectName+".timer")), dh.Sudoer, nil)
+	restartOut, err := dh.runSudo(client, fmt.Sprintf("systemctl reload-or-restart %s", utils.ShellQuote(projectName+".timer")), nil)
 	if err != nil {
 		return fmt.Errorf("error during service restart: %s (%s)", string(restartOut), err)
 	}
 
-	enableOut, err := client.RunSudo(fmt.Sprintf("systemctl enable --quiet --no-warn %s", utils.ShellQuote(projectName)), dh.Sudoer, nil)
+	enableOut, err := dh.runSudo(client, fmt.Sprintf("systemctl enable --quiet --no-warn %s", utils.ShellQuote(projectName)), nil)
 	if err != nil {
 		return fmt.Errorf("error during service enable: %s (%s)", string(enableOut), err)
 	}
@@ -240,7 +263,6 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 		return err
 	}
 
-	dh.AskForSudoer()
 	if err := validateDeploymentInputs(observer.Spec.Project, observer.Metadata.User, observer.Spec.Destination); err != nil {
 		return err
 	}
@@ -249,7 +271,7 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 	remoteAgeFilePath := fmt.Sprintf("%s/%s/age.key", observerUserHomeConfigDir, strings.ToLower(observer.Spec.Project))
 	remoteManifestPath := fmt.Sprintf("%s/%s/manifest.yaml", observerUserHomeConfigDir, strings.ToLower(observer.Spec.Project))
 	utils.LogInfo("Creating destination for user")
-	stdOut, stdErr := client.RunSudo(fmt.Sprintf("mkdir -p %s %s", utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), dh.Sudoer, nil)
+	stdOut, stdErr := dh.runSudo(client, fmt.Sprintf("mkdir -p %s %s", utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
 
 	if stdErr != nil {
 		return fmt.Errorf("error while destination folder: %s", stdOut)
@@ -257,7 +279,7 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 
 	utils.LogInfo("Change owner")
 
-	stdOut, stdErr = client.RunSudo(fmt.Sprintf("chown %s:%[1]s %s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir), utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), dh.Sudoer, nil)
+	stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir), utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
 
 	if stdErr != nil {
 		return fmt.Errorf("error while changing folder: %s", stdOut)
@@ -320,12 +342,12 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 	if err != nil {
 		return err
 	}
-	stdOut, stdErr = client.RunSudo(fmt.Sprintf("mkdir %s && chmod 700 %s", utils.ShellQuote(tmpRemoteDir), utils.ShellQuote(tmpRemoteDir)), dh.Sudoer, nil)
+	stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("mkdir %s && chmod 700 %s", utils.ShellQuote(tmpRemoteDir), utils.ShellQuote(tmpRemoteDir)), nil)
 	if stdErr != nil {
 		return fmt.Errorf("error while creating temp directory: %s", stdOut)
 	}
 	defer func() {
-		cleanupOut, cleanupErr := client.RunSudo(fmt.Sprintf("rm -rf %s", utils.ShellQuote(tmpRemoteDir)), dh.Sudoer, nil)
+		cleanupOut, cleanupErr := dh.runSudo(client, fmt.Sprintf("rm -rf %s", utils.ShellQuote(tmpRemoteDir)), nil)
 		if cleanupErr != nil {
 			retErr = errors.Join(retErr, fmt.Errorf("error cleaning remote temp directory %s: %s", tmpRemoteDir, cleanupOut))
 		}
@@ -361,19 +383,19 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 			return fmt.Errorf("closing tmp remote file [%s]: %w", tmpRemoteFilePath, err)
 		}
 
-		stdOut, stdErr = client.RunSudo(fmt.Sprintf("mv %s %s", utils.ShellQuote(tmpRemoteFilePath), utils.ShellQuote(deployFile.RemoteFilePath)), dh.Sudoer, nil)
+		stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("mv %s %s", utils.ShellQuote(tmpRemoteFilePath), utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 		if stdErr != nil {
 			return fmt.Errorf("error while moving remote file do location: %s", stdOut)
 		}
 
 		if filepath.Base(deployFile.RemoteFilePath) == "age.key" {
-			stdOut, stdErr = client.RunSudo(fmt.Sprintf("chmod 600 %s", utils.ShellQuote(deployFile.RemoteFilePath)), dh.Sudoer, nil)
+			stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("chmod 600 %s", utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 			if stdErr != nil {
 				return fmt.Errorf("error while setting remote file permissions: %s", stdOut)
 			}
 		}
 
-		stdOut, stdErr = client.RunSudo(fmt.Sprintf("chown %s:%[1]s %s", utils.ShellQuote(deployFile.RemoteFileOwner), utils.ShellQuote(deployFile.RemoteFilePath)), dh.Sudoer, nil)
+		stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s", utils.ShellQuote(deployFile.RemoteFileOwner), utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 		if stdErr != nil {
 			return fmt.Errorf("error while changing remote file owner: %s", stdOut)
 		}
