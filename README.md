@@ -5,7 +5,21 @@
 <h1 align="center">Skuld CLI</h1>
 <h3 align="center">the future’s watcher for your fleet</h3>
 
+<p align="center">
+  <a href="https://lyssar.github.io/skuld-cli/">📖 Documentation</a>
+  ·
+  <a href="https://github.com/lyssar/skuld-cli/releases">📦 Releases</a>
+</p>
+
 ---
+
+## Install
+
+```bash
+curl -sfL https://raw.githubusercontent.com/lyssar/skuld-cli/main/install.sh | sh
+```
+
+Or build from source: `task build`
 
 ## Quick Start
 
@@ -13,6 +27,7 @@
 - Validate: `task validate`
 - Local reconcile harness: `task local:run`
 - Local harness smoke: `task local:smoke`
+- [Full documentation →](https://lyssar.github.io/skuld-cli/)
 
 ## Prepare AGE Key
 
