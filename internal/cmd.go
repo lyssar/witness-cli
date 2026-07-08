@@ -3,6 +3,7 @@ package internal
 import (
 	"log/slog"
 
+	"github.com/lyssar/skuld-cli/internal/reconcile"
 	"github.com/lyssar/skuld-cli/utils"
 	"github.com/spf13/cobra"
 )
@@ -12,8 +13,21 @@ func InitCmd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	local, _ := cmd.Flags().GetBool("local")
+
 	observer := NewObserver(cmd)
+
+	// In --local mode, skip the age key prompt; WriteConfigRoot generates a new key.
+	if local {
+		observer.AgeKeyFile = "generated"
+	}
+
 	observer.Configure()
+
+	if local {
+		return observer.WriteConfigRoot()
+	}
+
 	observer.WriteConfig()
 
 	utils.DebugStruct(observer)
@@ -37,17 +51,7 @@ func NewAppCmd(cmd *cobra.Command, args []string) error {
 
 func ReconcileCmd(cmd *cobra.Command, args []string) error {
 	slog.Info("Start reconcilation run")
-	reconcileRun := NewReconcileRun(args[0])
-	if ok, err := reconcileRun.Validate(); !ok {
-		return err
-	}
-
-	err := reconcileRun.LoadManifest()
-	if err != nil {
-		return err
-	}
-
-	err = reconcileRun.Reconcile()
+	err := reconcile.NewRunner(args[0]).Run(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -71,7 +75,6 @@ func DeployCmd(cmd *cobra.Command, args []string) error {
 	err = deployHandler.ReloadSystemD(observer)
 	utils.CheckErr(err)
 
-	//   - Create Service and Timer on the system, named by the app of apps name
-	utils.LogSuccess("deploy successfull", "state", "NOT_IMPLEMENTED")
+	utils.LogSuccess("Deploy completed successfully", "host", deployHandler.SSH.Host, "project", observer.Spec.Project)
 	return nil
 }

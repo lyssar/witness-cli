@@ -26,7 +26,12 @@ func loadAgeRecipients(key string) ([]age.Recipient, error) {
 			return
 		}
 
-		defer keyFile.Close()
+		defer func() {
+			err := keyFile.Close()
+			if err != nil && recipientError == nil {
+				recipientError = fmt.Errorf("could not close key file %w", err)
+			}
+		}()
 
 		identities, err := age.ParseIdentities(keyFile)
 		if err != nil {

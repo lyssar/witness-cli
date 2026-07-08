@@ -23,5 +23,6 @@ func init() {
 	deployCmd.Flags().StringP("ssh-user", "u", "", "The ssh user to deploy the app of apps to")
 	deployCmd.Flags().StringP("ssh-key", "k", "", "The ssh key to use, optional. Make sure to have a ssh config for the host if ommited.")
 	deployCmd.Flags().String("host", "", "The host to deploy the observer to")
+	deployCmd.Flags().String("binary-path", "", "Path to the skuld-cli binary to upload (default: auto-detect)")
 	rootCmd.AddCommand(deployCmd)
 }

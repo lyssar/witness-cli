@@ -6,88 +6,223 @@ dotenv: ['.env']
 
 vars:
   APP: skuld-cli
-  TMP_BIN: '/tmp/{{.APP}}'
-  GOOS: linux
-  GOARCH: amd64
+  BIN_DIR: '{{.ROOT_DIR}}/.local/bin'
+  BIN_PATH: '{{.BIN_DIR}}/{{.APP}}'
   CGO_ENABLED: 0
-  GOFLAGS: -trimpath -ldflags="-s -w"
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+  GOFLAGS: '-trimpath -ldflags="-s -w -X github.com/lyssar/skuld-cli/version.Version={{.VERSION}}"'
   TARGET_DIR: '{{.DIR | default "."}}'
+  LOCAL_HARNESS_DIR: '{{default (printf "%s/.local/harness" .ROOT_DIR) .LOCAL_HARNESS_DIR}}'
+  LOCAL_COMPOSE_FILE: '{{default (printf "%s/docker/local-harness/compose.yml" .ROOT_DIR) .LOCAL_COMPOSE_FILE}}'
+  LOCAL_IMAGE: '{{default "skuld-cli-harness:latest" .LOCAL_IMAGE}}'
+  LOCAL_PROJECT: '{{default "local-observer" .LOCAL_PROJECT}}'
+  LOCAL_RUNTIME_USER: '{{default "skuld-daemon" .LOCAL_RUNTIME_USER}}'
+  LOCAL_SOURCE_PATH: '{{default "/apps" .LOCAL_SOURCE_PATH}}'
+  LOCAL_BIN_MOUNT_PATH: '{{default (printf "%s/.local/bin/skuld-cli" .ROOT_DIR) .LOCAL_BIN_MOUNT_PATH}}'
+  LOCAL_CONFIG_ROOT: '{{default (printf "%s/config" .LOCAL_HARNESS_DIR) .LOCAL_CONFIG_ROOT}}'
+  LOCAL_RUNTIME_ROOT: '{{default (printf "%s/runtime" .LOCAL_HARNESS_DIR) .LOCAL_RUNTIME_ROOT}}'
+  LOCAL_SOURCE_REPO: '{{default (printf "%s/source-repo" .LOCAL_HARNESS_DIR) .LOCAL_SOURCE_REPO}}'
+  LOCAL_MANIFEST_PATH: '{{default (printf "%s/manifest.yaml" .LOCAL_CONFIG_ROOT) .LOCAL_MANIFEST_PATH}}'
+  LOCAL_AGE_KEY_PATH: '{{default (printf "%s/age.key" .LOCAL_CONFIG_ROOT) .LOCAL_AGE_KEY_PATH}}'
+  LOCAL_DESTINATION_ROOT: '{{default (printf "%s/destination" .LOCAL_RUNTIME_ROOT) .LOCAL_DESTINATION_ROOT}}'
+  LOCAL_CONTAINER_CONFIG_ROOT: '{{default "/workspace/harness/config" .LOCAL_CONTAINER_CONFIG_ROOT}}'
+  LOCAL_CONTAINER_RUNTIME_ROOT: '{{default "/workspace/harness/runtime" .LOCAL_CONTAINER_RUNTIME_ROOT}}'
+  LOCAL_CONTAINER_SOURCE_REPO: '{{default "/workspace/harness/source-repo" .LOCAL_CONTAINER_SOURCE_REPO}}'
+  LOCAL_CONTAINER_DESTINATION_ROOT: '{{default "/workspace/harness/runtime/destination" .LOCAL_CONTAINER_DESTINATION_ROOT}}'
 
 tasks:
   default:
-    desc: Show deployment environment variables
+    desc: Show available local harness workflow
     cmds:
-      - printf "DEPLOY_HOST=%s\n" "$DEPLOY_HOST"
-      - printf "DEPLOY_USER=%s\n" "$DEPLOY_USER"
-      - printf "DEPLOY_PATH=%s\n" "$DEPLOY_PATH"
+      - task --list
     silent: true
 
   clean:
-    summary: Remove local temporary build artifacts
-    desc: Removes local tmp build
+    desc: Remove local Go build artifacts
     cmds:
-      - rm -f {{.TMP_BIN}}
+      - rm -rf {{.BIN_DIR}}
     silent: true
 
   build:
-    summary: Build the Go application
-    desc: Builds the golang applicaiton into tmp
-    deps: [clean]
+    desc: Build the Go CLI locally
     cmds:
-      - printf "🔨 Building {{.APP}}...\n"
-      - GOOS={{.GOOS}} GOARCH={{.GOARCH}} CGO_ENABLED={{.CGO_ENABLED}} go build {{.GOFLAGS}} -o {{.TMP_BIN}} .
-    silent: true
-
-  deploy-server:
-    summary: Deploy the CLI to the test server
-    desc: Will build and deploy the cli to the server for testing
-    deps: [build]
-    cmds:
-      - printf "🚀 Deploying to %s...\n" "$DEPLOY_HOST"
-      - rsync -avz {{.TMP_BIN}} $DEPLOY_USER@$DEPLOY_HOST:{{.TMP_BIN}}
-      - printf "   Installing on server...\n"
-      - |
-        ssh -t $DEPLOY_USER@$DEPLOY_HOST '
-          set -euo pipefail
-          sudo install -m 0755 {{.TMP_BIN}} /usr/local/bin/{{.APP}}
-          printf "✓ Install successful\n"
-        '
-      - printf "✅ Deployment successful\n"
-    silent: true
-
-  deploy:
-    summary: Run the 'deploy' command
-    desc: Build & Run deploy command
-    deps: [build]
-    cmds:
-      - printf "🚀 Running 'deploy' command...\n"
-      - cmd: '{{.TMP_BIN}} deploy -d -a ~/.config/skuld-cli/skuldd/age.key --host hetzner ~/.config/skuld-cli/skuldd/manifest.yaml'
+      - mkdir -p {{.BIN_DIR}}
+      - CGO_ENABLED={{.CGO_ENABLED}} go build {{.GOFLAGS}} -o {{.BIN_PATH}} .
     silent: true
 
   init:
-    summary: Run the 'init' command
-    desc: Build & Run init command
+    desc: Run the init command
     deps: [build]
     cmds:
-      - printf "✨ Running 'init' command...\n"
-      - cmd: '{{.TMP_BIN}} init -d'
+      - '{{.BIN_PATH}} init -d'
     silent: true
 
-  new-add:
-    summary: Run the 'new-app' command
-    desc: Build & Run new-app command
+  new-app:
+    desc: Run the new-app command
     deps: [build]
     dir: '{{.TARGET_DIR}}'
     cmds:
-      - printf "📦 Running 'new-app' command...\n"
-      - cmd: '{{.TMP_BIN}} new-app -a ~/.config/skuld-cli/skuldd/age.key'
+      - '{{.BIN_PATH}} new-app -a ~/.config/skuld-cli/skuldd/age.key'
     silent: true
 
   reconcile:
-    summary: Run the 'reconcile' command
-    desc: Build & Run reconcile command
+    desc: Run the reconcile command
     deps: [build]
     cmds:
-      - printf "🔄 Running 'reconcile' command...\n"
-      - cmd: '{{.TMP_BIN}} reconcile -d ~/.config/skuld-cli/skuldd/'
+      - '{{.BIN_PATH}} reconcile ~/.config/skuld-cli/skuldd/'
+    silent: true
+
+  validate:gofmt:
+    desc: Check gofmt formatting
+    cmds:
+      - |
+        test -z "$(gofmt -l .)"
+    silent: true
+
+  validate:vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+    silent: true
+
+  validate:lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run
+    silent: true
+
+  validate:build:
+    desc: Run go build
+    cmds:
+      - go build ./...
+    silent: true
+
+  validate:test:
+    desc: Run Go tests with race detector
+    cmds:
+      - go test ./... -race -count=1
+    silent: true
+
+  validate:
+    desc: Run the full Go validation suite
+    deps:
+      - validate:gofmt
+      - validate:vet
+      - validate:lint
+      - validate:build
+      - validate:test
+
+  local:prepare:
+    desc: Build CLI and prepare reduced-scope local harness inputs under .local/
+    deps: [build]
+    cmds:
+      - rm -rf "{{.LOCAL_HARNESS_DIR}}/ssh" "{{.LOCAL_HARNESS_DIR}}/home"
+      - mkdir -p "{{.LOCAL_CONFIG_ROOT}}" "{{.LOCAL_RUNTIME_ROOT}}" "{{.LOCAL_SOURCE_REPO}}/apps/hello" "{{.LOCAL_DESTINATION_ROOT}}"
+      - |
+        if [ ! -f "{{.LOCAL_AGE_KEY_PATH}}" ] || ! age-keygen -y "{{.LOCAL_AGE_KEY_PATH}}" >/dev/null 2>&1; then
+          age-keygen -o "{{.LOCAL_AGE_KEY_PATH}}" >/dev/null 2>&1
+          chmod 0600 "{{.LOCAL_AGE_KEY_PATH}}"
+        fi
+      - |
+        printf '%s\n' \
+          'apiVersion: skuld/v1alpha1' \
+          'kind: Observer' \
+          'metadata:' \
+          '  name: {{.LOCAL_PROJECT}}' \
+          '  user: {{.LOCAL_RUNTIME_USER}}' \
+          'spec:' \
+          '  project: {{.LOCAL_PROJECT}}' \
+          '  destination: {{.LOCAL_CONTAINER_DESTINATION_ROOT}}' \
+          '  source:' \
+          '    repoURL: {{.LOCAL_CONTAINER_SOURCE_REPO}}' \
+          '    targetRevision: main' \
+          '    path: {{.LOCAL_SOURCE_PATH}}' \
+          '    user: harness' \
+          '    accessToken: unused' \
+          '  timeout:' \
+          '    reconciliation: 30s' \
+          >"{{.LOCAL_MANIFEST_PATH}}"
+      - |
+        rm -rf "{{.LOCAL_SOURCE_REPO}}"
+        rm -rf "{{.LOCAL_DESTINATION_ROOT}}"
+        mkdir -p "{{.LOCAL_SOURCE_REPO}}/apps/hello" "{{.LOCAL_DESTINATION_ROOT}}/apps/hello"
+        printf '%s\n' \
+          'apiVersion: skuld.dev/v1alpha1' \
+          'kind: Application' \
+          'metadata:' \
+          '  name: hello' \
+          'spec:' \
+          '  provisioner: docker-compose' \
+          '  composeFiles:' \
+          '    - compose.yaml' \
+          >"{{.LOCAL_SOURCE_REPO}}/apps/hello/skuld.yaml"
+        printf '%s\n' \
+          'services:' \
+          '  hello:' \
+          '    image: hello-world:latest' \
+          >"{{.LOCAL_SOURCE_REPO}}/apps/hello/compose.yaml"
+        cp "{{.LOCAL_SOURCE_REPO}}/apps/hello/skuld.yaml" "{{.LOCAL_DESTINATION_ROOT}}/apps/hello/skuld.yaml"
+        cp "{{.LOCAL_SOURCE_REPO}}/apps/hello/compose.yaml" "{{.LOCAL_DESTINATION_ROOT}}/apps/hello/compose.yaml"
+        chmod -R a+rX "{{.LOCAL_SOURCE_REPO}}"
+        git -C "{{.LOCAL_SOURCE_REPO}}" init -b main >/dev/null
+        git -C "{{.LOCAL_SOURCE_REPO}}" config user.name "local harness"
+        git -C "{{.LOCAL_SOURCE_REPO}}" config user.email "local-harness@example.invalid"
+        git -C "{{.LOCAL_SOURCE_REPO}}" add .
+        git -C "{{.LOCAL_SOURCE_REPO}}" commit -m "seed local harness repo" >/dev/null
+    silent: true
+
+  local:run:
+    desc: Run reconcile inside the reduced-scope compose harness
+    deps: [local:prepare]
+    env:
+      LOCAL_IMAGE: '{{.LOCAL_IMAGE}}'
+      LOCAL_BIN_MOUNT_PATH: '{{.LOCAL_BIN_MOUNT_PATH}}'
+      LOCAL_HOST_CONFIG_ROOT: '{{.LOCAL_CONFIG_ROOT}}'
+      LOCAL_HOST_RUNTIME_ROOT: '{{.LOCAL_RUNTIME_ROOT}}'
+      LOCAL_HOST_SOURCE_REPO: '{{.LOCAL_SOURCE_REPO}}'
+    cmds:
+      - docker compose -f {{.LOCAL_COMPOSE_FILE}} run --rm --build target reconcile {{.LOCAL_CONTAINER_RUNTIME_ROOT}}
+    silent: true
+
+  local:smoke:
+    desc: Run the reduced-scope harness and assert repo sync plus no-drift state outputs
+    deps: [local:run]
+    cmds:
+      - test -d "{{.LOCAL_RUNTIME_ROOT}}/repo/.git"
+      - test -f "{{.LOCAL_RUNTIME_ROOT}}/repo/apps/hello/skuld.yaml"
+      - test -f "{{.LOCAL_RUNTIME_ROOT}}/repo/apps/hello/compose.yaml"
+      - test -f "{{.LOCAL_DESTINATION_ROOT}}/apps/hello/skuld.yaml"
+      - test -f "{{.LOCAL_DESTINATION_ROOT}}/apps/hello/compose.yaml"
+      - test -f "{{.LOCAL_RUNTIME_ROOT}}/state.json"
+    silent: true
+
+  local:status:
+    desc: Show reduced-scope harness compose configuration
+    env:
+      LOCAL_IMAGE: '{{.LOCAL_IMAGE}}'
+      LOCAL_BIN_MOUNT_PATH: '{{.LOCAL_BIN_MOUNT_PATH}}'
+      LOCAL_HOST_CONFIG_ROOT: '{{.LOCAL_CONFIG_ROOT}}'
+      LOCAL_HOST_RUNTIME_ROOT: '{{.LOCAL_RUNTIME_ROOT}}'
+      LOCAL_HOST_SOURCE_REPO: '{{.LOCAL_SOURCE_REPO}}'
+    cmds:
+      - docker compose -f {{.LOCAL_COMPOSE_FILE}} config --services
+    silent: true
+
+  local:down:
+    desc: Remove reduced-scope harness containers
+    env:
+      LOCAL_IMAGE: '{{.LOCAL_IMAGE}}'
+      LOCAL_BIN_MOUNT_PATH: '{{.LOCAL_BIN_MOUNT_PATH}}'
+      LOCAL_HOST_CONFIG_ROOT: '{{.LOCAL_CONFIG_ROOT}}'
+      LOCAL_HOST_RUNTIME_ROOT: '{{.LOCAL_RUNTIME_ROOT}}'
+      LOCAL_HOST_SOURCE_REPO: '{{.LOCAL_SOURCE_REPO}}'
+    cmds:
+      - docker compose -f {{.LOCAL_COMPOSE_FILE}} down --remove-orphans
+    silent: true
+
+  local:clean:
+    desc: Remove local harness artifacts and the built binary
+    cmds:
+      - rm -rf {{.LOCAL_HARNESS_DIR}} {{.BIN_DIR}}
     silent: true

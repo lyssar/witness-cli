@@ -43,5 +43,6 @@ func CheckPrerequisites(cmd *cobra.Command) error {
 func ensureCliConfigDir() {
 	userPath, err := os.UserConfigDir()
 	utils.CheckErr(err)
-	os.MkdirAll(fmt.Sprintf("%s/%s", userPath, utils.APP_NAME), 0755)
+	err = os.MkdirAll(fmt.Sprintf("%s/%s", userPath, utils.APP_NAME), 0700)
+	utils.CheckErr(err)
 }
