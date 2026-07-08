@@ -1,15 +1,15 @@
-name: skuld-cli-local-harness
+name: witness-cli-local-harness
 
 services:
   target:
-    image: ${LOCAL_IMAGE:-skuld-cli-harness:latest}
+    image: ${LOCAL_IMAGE:-witness-cli-harness:latest}
     build:
       context: ../..
       dockerfile: docker/local-harness/Dockerfile
     working_dir: /workspace
-    entrypoint: ["/usr/local/bin/skuld-cli"]
+    entrypoint: ["/usr/local/bin/witness"]
     volumes:
-      - ${LOCAL_BIN_MOUNT_PATH:-../../.local/bin/skuld-cli}:/usr/local/bin/skuld-cli:ro
+      - ${LOCAL_BIN_MOUNT_PATH:-../../.local/bin/witness}:/usr/local/bin/witness:ro
       - ${LOCAL_HOST_RUNTIME_ROOT:-../../.local/harness/runtime}:/workspace/harness/runtime
       - ${LOCAL_HOST_CONFIG_ROOT:-../../.local/harness/config}/manifest.yaml:/workspace/harness/runtime/manifest.yaml:ro
       - ${LOCAL_HOST_CONFIG_ROOT:-../../.local/harness/config}/age.key:/workspace/harness/runtime/age.key:ro

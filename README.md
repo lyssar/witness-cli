@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Skuld CLI Logo" width="320" />
+  <img src="assets/logo.png" alt="Witness Logo" width="320" />
 </p>
 
-<h1 align="center">Skuld CLI</h1>
+<h1 align="center">Witness</h1>
 <h3 align="center">the future’s watcher for your fleet</h3>
 
 <p align="center">
-  <a href="https://lyssar.github.io/skuld-cli/">📖 Documentation</a>
+  <a href="https://lyssar.github.io/witness-cli/">📖 Documentation</a>
   ·
-  <a href="https://github.com/lyssar/skuld-cli/releases">📦 Releases</a>
+  <a href="https://github.com/lyssar/witness-cli/releases">📦 Releases</a>
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
 ## Install
 
 ```bash
-curl -sfL https://raw.githubusercontent.com/lyssar/skuld-cli/main/install.sh | sh
+curl -sfL https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh | sh
 ```
 
 Or build from source: `task build`
@@ -31,7 +31,7 @@ Or build from source: `task build`
 - Validate: `task validate`
 - Local reconcile harness: `task local:run`
 - Local harness smoke: `task local:smoke`
-- [Full documentation →](https://lyssar.github.io/skuld-cli/)
+- [Full documentation →](https://lyssar.github.io/witness-cli/)
 
 ## Prepare AGE Key
 
@@ -51,7 +51,7 @@ It uses:
 
 - `docker compose` as the only orchestrator
 - a dedicated harness image from `docker/local-harness/Dockerfile`
-- a host-built `skuld-cli` binary mounted read-only into the container
+- a host-built `witness` binary mounted read-only into the container
 - a writable runtime root for reconcile output and cloned repo state
 - a preseeded no-drift destination tree so the smoke path can stay honest without simulating real docker runtime apply behavior in-container
 - the prepared manifest and age key mounted read-only
@@ -74,7 +74,7 @@ This reduced harness does **not** attempt to simulate SSH, sudo, systemd, full t
 
 CircleCI now runs both `task validate` and `task local:smoke`.
 
-See [Local Harness documentation](https://lyssar.github.io/skuld-cli/local-harness) for exact scope and mounted paths.
+See [Local Harness documentation](https://lyssar.github.io/witness-cli/local-harness) for exact scope and mounted paths.
 
 ## Manual Secret Inspection
 

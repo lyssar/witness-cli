@@ -1,10 +1,10 @@
 package application
 
 // ManifestFileName is the exact supported application manifest filename.
-const ManifestFileName = "skuld.yaml"
+const ManifestFileName = "witness.yaml"
 
 // APIVersionV1Alpha1 is the only supported Application apiVersion in v1.
-const APIVersionV1Alpha1 = "skuld.dev/v1alpha1"
+const APIVersionV1Alpha1 = "witness.dev/v1alpha1"
 
 // KindApplication is the only supported Application kind in v1.
 const KindApplication = "Application"

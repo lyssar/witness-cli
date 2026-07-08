@@ -3,17 +3,17 @@ layout: default
 title: Home
 ---
 
-# Skuld CLI
+# Witness
 
 > *"The future is not written in stone — it is reconciled from Git."*
 
-**Skuld** — named after the Norn of the future — watches your bare servers and reconciles them against a Git repository. Like ArgoCD, but for the metal fleet.
+**Witness** — watches your bare servers and reconciles them against a Git repository. Like ArgoCD, but for the metal fleet.
 
 ## For the Brotherhood
 
 <div class="highlight-box">
 <strong>☥ One Git repo to rule them all.</strong><br>
-Define your applications, push to the repo, and Skuld enforces the state on every reconciliation cycle. Secrets encrypted with <strong>age</strong>, deployed with <strong>Docker Compose</strong>, hardened with <strong>systemd</strong>.
+Define your applications, push to the repo, and Witness enforces the state on every reconciliation cycle. Secrets encrypted with <strong>age</strong>, deployed with <strong>Docker Compose</strong>, hardened with <strong>systemd</strong>.
 </div>
 
 ## Key Features
@@ -30,13 +30,13 @@ Define your applications, push to the repo, and Skuld enforces the state on ever
 
 ```bash
 # Install
-curl -sfL https://raw.githubusercontent.com/lyssar/skuld-cli/main/install.sh | sh
+curl -sfL https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh | sh
 
 # Create an observer
-skuld-cli init my-server --local
+witness init my-server --local
 
 # Reconcile
-skuld-cli reconcile ~/.config/skuld-cli/my-server/
+witness reconcile ~/.config/witness/my-server/
 ```
 
 ## Quick Links

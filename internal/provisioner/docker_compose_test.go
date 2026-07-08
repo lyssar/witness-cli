@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lyssar/skuld-cli/internal/application"
+	"github.com/lyssar/witness-cli/internal/application"
 )
 
 func TestDockerComposeCommands(t *testing.T) {

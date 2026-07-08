@@ -8,8 +8,8 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/creasty/defaults"
-	"github.com/lyssar/skuld-cli/templates"
-	"github.com/lyssar/skuld-cli/utils"
+	"github.com/lyssar/witness-cli/templates"
+	"github.com/lyssar/witness-cli/utils"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -27,7 +27,7 @@ type AppSpec struct {
 }
 
 type App struct {
-	ApiVersion string   `default:"skuld.dev/v1alpha1" yaml:"apiVersion"`
+	ApiVersion string   `default:"witness.dev/v1alpha1" yaml:"apiVersion"`
 	Kind       string   `default:"Application" yaml:"kind"`
 	Metadata   Metadata `yaml:"metadata"`
 	Spec       AppSpec  `yaml:"spec"`
@@ -196,7 +196,7 @@ func (app *App) WriteConfig() {
 	pwd, err := os.Getwd()
 	utils.CheckErr(err)
 
-	pathOut := filepath.Join(pwd, "skuld-app.yaml")
+	pathOut := filepath.Join(pwd, "witness-app.yaml")
 	f, err := os.Create(pathOut)
 	utils.CheckErr(err)
 

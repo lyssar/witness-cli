@@ -2,8 +2,8 @@ include .env
 # =========================
 # Project configuration
 # =========================
-APP_NAME := skuld-cli
-BIN_DIR  := /tmp/skuld-cli
+APP_NAME := witness
+BIN_DIR  := /tmp/witness
 BIN      := $(BIN_DIR)/$(APP_NAME)
 
 # =========================
@@ -14,7 +14,7 @@ GOOS   := linux
 GOARCH := amd64
 CGO_ENABLED := 0
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-GOFLAGS := -trimpath -ldflags="-s -w -X github.com/lyssar/skuld-cli/version.Version=$(VERSION)"
+GOFLAGS := -trimpath -ldflags="-s -w -X github.com/lyssar/witness-cli/version.Version=$(VERSION)"
 
 # =========================
 # Deploy configuration

@@ -1,6 +1,6 @@
 {{- define "service" }}
 [Unit]
-Description=Skuld CLI {{ .Observer.Metadata.Name }} service
+Description=Witness {{ .Observer.Metadata.Name }} service
 Wants=network-online.target
 After=network-online.target
 
@@ -9,7 +9,7 @@ Type=oneshot
 User={{ .Observer.Metadata.User }}
 Group={{ .Observer.Metadata.User }}
 WorkingDirectory=/home/{{ .Observer.Metadata.User }}
-ExecStart=/usr/local/bin/skuld-cli reconcile {{ .ObserverConfigPath }}
+ExecStart=/usr/local/bin/witness reconcile {{ .ObserverConfigPath }}
 
 # Security hardening
 ProtectSystem=strict

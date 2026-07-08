@@ -13,10 +13,10 @@ The local harness validates the reconcile runtime command against a disposable D
 
 <div class="highlight-box">
 <strong>Validates:</strong><br>
-1. Local <code>skuld-cli</code> build output<br>
+1. Local <code>witness</code> build output<br>
 2. Prepared observer config root under <code>.local/</code><br>
 3. Seeded source repository mounted into the container<br>
-4. <code>skuld-cli reconcile</code> execution inside the container<br>
+4. <code>witness reconcile</code> execution inside the container<br>
 5. Repository sync, application discovery, drift analysis, and state persistence
 </div>
 
@@ -25,9 +25,9 @@ The local harness validates the reconcile runtime command against a disposable D
 ## Design
 
 - Docker Compose is the only orchestrator
-- The host builds `skuld-cli` first via `Taskfile.yml`
+- The host builds `witness` first via `Taskfile.yml`
 - The container mounts only what it needs — read-only binary, writable runtime, read-only config and source repo
-- Runs `skuld-cli reconcile` directly in-container
+- Runs `witness reconcile` directly in-container
 - No privileged mode, no cgroup mounts, no systemd
 - The harness image marks the source repo path as Git `safe.directory` for reliable bind mounts
 
@@ -38,7 +38,7 @@ The local harness validates the reconcile runtime command against a disposable D
 | `docker/local-harness/Dockerfile` | Container image with age + git |
 | `docker/local-harness/compose.yml` | Compose service definition |
 | `.local/harness/` | Prepared inputs (config, repo, runtime) |
-| `.local/bin/skuld-cli` | Built CLI binary |
+| `.local/bin/witness` | Built CLI binary |
 
 ## Workflow
 
@@ -66,7 +66,7 @@ task local:smoke
 │   └── destination/     # Pre-seeded no-drift state
 └── source-repo/
     ├── apps/hello/
-    │   ├── skuld.yaml   # Application manifest
+    │   ├── witness.yaml   # Application manifest
     │   └── compose.yaml # Docker Compose file
     └── .git/
 ```

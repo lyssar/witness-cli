@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/lyssar/skuld-cli/internal"
+	"github.com/lyssar/witness-cli/internal"
 	"github.com/spf13/cobra"
 )
 

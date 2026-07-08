@@ -3,8 +3,8 @@ package internal
 import (
 	"log/slog"
 
-	"github.com/lyssar/skuld-cli/internal/reconcile"
-	"github.com/lyssar/skuld-cli/utils"
+	"github.com/lyssar/witness-cli/internal/reconcile"
+	"github.com/lyssar/witness-cli/utils"
 	"github.com/spf13/cobra"
 )
 

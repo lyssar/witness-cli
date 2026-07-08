@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/lyssar/skuld-cli/utils"
+	"github.com/lyssar/witness-cli/utils"
 	"github.com/spf13/cobra"
 )
 

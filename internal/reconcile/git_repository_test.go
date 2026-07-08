@@ -207,16 +207,16 @@ func newGitFixture(t *testing.T) gitFixture {
 	tagSHA := strings.TrimSpace(runGit(t, seedPath, "rev-parse", "HEAD"))
 	runGit(t, seedPath, "tag", "v1.0.0")
 	runGit(t, seedPath, "checkout", "-b", "feature")
-	writeFile(t, filepath.Join(seedPath, "apps", "app-one", "skuld.yaml"), appManifest("app-one"))
+	writeFile(t, filepath.Join(seedPath, "apps", "app-one", "witness.yaml"), appManifest("app-one"))
 	writeFile(t, filepath.Join(seedPath, "apps", "app-one", "compose.yaml"), "services: {}\n")
-	runGit(t, seedPath, "add", "apps/app-one/skuld.yaml", "apps/app-one/compose.yaml")
+	runGit(t, seedPath, "add", "apps/app-one/witness.yaml", "apps/app-one/compose.yaml")
 	runGit(t, seedPath, "commit", "-m", "feature commit")
 	featureSHA := strings.TrimSpace(runGit(t, seedPath, "rev-parse", "HEAD"))
 
 	runGit(t, seedPath, "checkout", "main")
-	writeFile(t, filepath.Join(seedPath, "apps", "app-main", "skuld.yaml"), appManifest("app-main"))
+	writeFile(t, filepath.Join(seedPath, "apps", "app-main", "witness.yaml"), appManifest("app-main"))
 	writeFile(t, filepath.Join(seedPath, "apps", "app-main", "compose.yaml"), "services: {}\n")
-	runGit(t, seedPath, "add", "apps/app-main/skuld.yaml", "apps/app-main/compose.yaml")
+	runGit(t, seedPath, "add", "apps/app-main/witness.yaml", "apps/app-main/compose.yaml")
 	runGit(t, seedPath, "commit", "-m", "add app manifest")
 	mainSHA := strings.TrimSpace(runGit(t, seedPath, "rev-parse", "HEAD"))
 
@@ -230,7 +230,7 @@ func newGitFixture(t *testing.T) gitFixture {
 }
 
 func appManifest(name string) string {
-	return "apiVersion: skuld.dev/v1alpha1\n" +
+	return "apiVersion: witness.dev/v1alpha1\n" +
 		"kind: Application\n" +
 		"metadata:\n" +
 		"  name: " + name + "\n" +

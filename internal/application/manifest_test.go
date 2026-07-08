@@ -18,7 +18,7 @@ func TestParseManifest(t *testing.T) {
 	}{
 		{
 			name: "valid minimal manifest",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -30,7 +30,7 @@ spec:
 		},
 		{
 			name: "unknown field rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -45,7 +45,7 @@ spec:
 		},
 		{
 			name: "wrong apiVersion rejected",
-			content: `apiVersion: skuld.dev/v1
+			content: `apiVersion: witness.dev/v1
 kind: Application
 metadata:
   name: app
@@ -59,7 +59,7 @@ spec:
 		},
 		{
 			name: "wrong kind rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: App
 metadata:
   name: app
@@ -73,7 +73,7 @@ spec:
 		},
 		{
 			name: "missing metadata name rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata: {}
 spec:
@@ -86,7 +86,7 @@ spec:
 		},
 		{
 			name: "missing compose files rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -98,7 +98,7 @@ spec:
 		},
 		{
 			name: "duplicate compose files rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -113,7 +113,7 @@ spec:
 		},
 		{
 			name: "missing declared compose file rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -127,7 +127,7 @@ spec:
 		},
 		{
 			name: "duplicate secret source rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -148,7 +148,7 @@ spec:
 		},
 		{
 			name: "duplicate secret target rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -169,7 +169,7 @@ spec:
 		},
 		{
 			name: "secret target collides with compose file rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -187,7 +187,7 @@ spec:
 		},
 		{
 			name: "secret target collides with secret source rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -208,7 +208,7 @@ spec:
 		},
 		{
 			name: "secret target collides with later secret source rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -229,7 +229,7 @@ spec:
 		},
 		{
 			name: "unsupported provisioner rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -243,7 +243,7 @@ spec:
 		},
 		{
 			name: "unsupported decryptor rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -261,7 +261,7 @@ spec:
 		},
 		{
 			name: "unsafe compose path rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -275,7 +275,7 @@ spec:
 		},
 		{
 			name: "multiple yaml documents rejected",
-			content: `apiVersion: skuld.dev/v1alpha1
+			content: `apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: app
@@ -284,7 +284,7 @@ spec:
   composeFiles:
     - docker-compose.yaml
 ---
-apiVersion: skuld.dev/v1alpha1
+apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: another

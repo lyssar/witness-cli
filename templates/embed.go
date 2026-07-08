@@ -6,7 +6,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/lyssar/skuld-cli/utils"
+	"github.com/lyssar/witness-cli/utils"
 )
 
 //go:embed *.gotmpl manifests/*.gotmpl

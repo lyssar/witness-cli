@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"filippo.io/age"
-	"github.com/lyssar/skuld-cli/internal/application"
-	"github.com/lyssar/skuld-cli/internal/decryptor"
+	"github.com/lyssar/witness-cli/internal/application"
+	"github.com/lyssar/witness-cli/internal/decryptor"
 )
 
 func TestBuildAppStaging(t *testing.T) {

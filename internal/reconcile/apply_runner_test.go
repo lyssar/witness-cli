@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lyssar/skuld-cli/internal/application"
-	"github.com/lyssar/skuld-cli/internal/decryptor"
-	"github.com/lyssar/skuld-cli/internal/provisioner"
-	"github.com/lyssar/skuld-cli/internal/state"
+	"github.com/lyssar/witness-cli/internal/application"
+	"github.com/lyssar/witness-cli/internal/decryptor"
+	"github.com/lyssar/witness-cli/internal/provisioner"
+	"github.com/lyssar/witness-cli/internal/state"
 )
 
 var errBoom = errors.New("boom")
@@ -235,7 +235,7 @@ func newMutableGitFixture(t *testing.T) mutableGitFixture {
 	runGit(t, seedPath, "init", "-b", "main")
 	runGit(t, seedPath, "config", "user.email", "test@example.com")
 	runGit(t, seedPath, "config", "user.name", "test")
-	writeFile(t, filepath.Join(seedPath, "apps", "hello", "skuld.yaml"), "apiVersion: skuld.dev/v1alpha1\nkind: Application\nmetadata:\n  name: hello\nspec:\n  provisioner: docker-compose\n  composeFiles:\n    - compose.yaml\n  secrets:\n    - source: secret.age\n      target: secrets/.env\n      decryptor: age\n")
+	writeFile(t, filepath.Join(seedPath, "apps", "hello", "witness.yaml"), "apiVersion: witness.dev/v1alpha1\nkind: Application\nmetadata:\n  name: hello\nspec:\n  provisioner: docker-compose\n  composeFiles:\n    - compose.yaml\n  secrets:\n    - source: secret.age\n      target: secrets/.env\n      decryptor: age\n")
 	writeFile(t, filepath.Join(seedPath, "apps", "hello", "compose.yaml"), "services:\n  hello:\n    image: hello:v1\n")
 	writeFile(t, filepath.Join(seedPath, "apps", "hello", "secret.age"), "unused")
 	runGit(t, seedPath, "add", ".")

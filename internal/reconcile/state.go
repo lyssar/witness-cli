@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/lyssar/skuld-cli/internal/application"
-	"github.com/lyssar/skuld-cli/internal/state"
+	"github.com/lyssar/witness-cli/internal/application"
+	"github.com/lyssar/witness-cli/internal/state"
 )
 
 func statePathForConfigRoot(configRoot string) string {

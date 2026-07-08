@@ -18,19 +18,19 @@ Before you join the Brotherhood, ensure your system has the necessary tools:
 One command, ready to deploy:
 
 ```bash
-curl -sfL https://raw.githubusercontent.com/lyssar/skuld-cli/main/install.sh | sh
+curl -sfL https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh | sh
 ```
 
 The script will:
 1. Detect your OS (Linux/macOS) and architecture (amd64/arm64)
 2. Download the latest release from GitHub
-3. Install to `~/.local/bin/skuld-cli`
+3. Install to `~/.local/bin/witness`
 4. Add it to your `PATH` if needed
 
 ## Option 2: Go Install
 
 ```bash
-go install github.com/lyssar/skuld-cli@latest
+go install github.com/lyssar/witness-cli@latest
 ```
 
 Requires Go 1.25+.
@@ -38,10 +38,10 @@ Requires Go 1.25+.
 ## Option 3: Build from Source
 
 ```bash
-git clone https://github.com/lyssar/skuld-cli.git
-cd skuld-cli
+git clone https://github.com/lyssar/witness-cli.git
+cd witness-cli
 task build
-# Binary ready at .local/bin/skuld-cli
+# Binary ready at .local/bin/witness
 ```
 
 ## Option 4: Taskfile
@@ -57,7 +57,7 @@ task local:smoke  # Run the reduced-scope harness
 ## Verify
 
 ```bash
-skuld-cli version
+witness version
 ```
 
 ## Next Steps

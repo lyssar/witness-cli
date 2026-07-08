@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lyssar/skuld-cli/internal/application"
-	"github.com/lyssar/skuld-cli/internal/provisioner"
-	"github.com/lyssar/skuld-cli/internal/state"
+	"github.com/lyssar/witness-cli/internal/application"
+	"github.com/lyssar/witness-cli/internal/provisioner"
+	"github.com/lyssar/witness-cli/internal/state"
 )
 
 func liveAppDir(destinationRoot string, operationalID string) (string, error) {

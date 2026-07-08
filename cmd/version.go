@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/lyssar/skuld-cli/version"
+	"github.com/lyssar/witness-cli/version"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +15,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version and exit",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_, err := fmt.Printf("skuld-cli %s (commit %s)\n", version.Version, version.Commit())
+		_, err := fmt.Printf("witness %s (commit %s)\n", version.Version, version.Commit())
 		return err
 	},
 }

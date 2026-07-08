@@ -41,7 +41,7 @@ func TestDiscoverApplicationsExactManifestNameOnly(t *testing.T) {
 	}
 
 	manifest := validManifestYAML("web")
-	if err := os.WriteFile(filepath.Join(appDir, "skuld.yml"), []byte(manifest), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(appDir, "witness.yml"), []byte(manifest), 0o600); err != nil {
 		t.Fatalf("write wrong manifest: %v", err)
 	}
 
@@ -59,7 +59,7 @@ func TestDiscoverApplicationsRejectsNonDirectoryRoot(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	discoveryRoot := filepath.Join(root, "skuld.yaml")
+	discoveryRoot := filepath.Join(root, "witness.yaml")
 	if err := os.WriteFile(discoveryRoot, []byte(validManifestYAML("app")), 0o600); err != nil {
 		t.Fatalf("write discovery root file: %v", err)
 	}
@@ -125,7 +125,7 @@ func writeApp(t *testing.T, appDir string) {
 }
 
 func validManifestYAML(name string) string {
-	return "apiVersion: skuld.dev/v1alpha1\n" +
+	return "apiVersion: witness.dev/v1alpha1\n" +
 		"kind: Application\n" +
 		"metadata:\n" +
 		"  name: " + name + "\n" +

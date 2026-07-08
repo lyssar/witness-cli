@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lyssar/skuld-cli/internal/application"
-	"github.com/lyssar/skuld-cli/internal/decryptor"
-	"github.com/lyssar/skuld-cli/internal/provisioner"
-	"github.com/lyssar/skuld-cli/internal/state"
+	"github.com/lyssar/witness-cli/internal/application"
+	"github.com/lyssar/witness-cli/internal/decryptor"
+	"github.com/lyssar/witness-cli/internal/provisioner"
+	"github.com/lyssar/witness-cli/internal/state"
 	"gopkg.in/yaml.v3"
 )
 

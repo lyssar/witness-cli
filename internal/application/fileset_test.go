@@ -14,7 +14,7 @@ func TestBuildFileSet(t *testing.T) {
 	mustWrite(t, filepath.Join(appDir, "compose.yaml"), "services: {}")
 	mustWrite(t, filepath.Join(appDir, "README.md"), "readme")
 	mustWrite(t, filepath.Join(appDir, "secrets.enc"), "cipher")
-	mustWrite(t, filepath.Join(appDir, ".skuldignore"), "README.md\n")
+	mustWrite(t, filepath.Join(appDir, ".witnessignore"), "README.md\n")
 
 	app := DiscoveredApplication{
 		SourceDir:     appDir,
@@ -31,7 +31,7 @@ func TestBuildFileSet(t *testing.T) {
 	}
 
 	if len(fileset.ManagedFiles) != 2 {
-		t.Fatalf("expected 2 managed files (.skuldignore + compose), got %d", len(fileset.ManagedFiles))
+		t.Fatalf("expected 2 managed files (.witnessignore + compose), got %d", len(fileset.ManagedFiles))
 	}
 	if len(fileset.DeferredSecretTargets) != 1 || fileset.DeferredSecretTargets[0] != "secrets/.env" {
 		t.Fatalf("unexpected deferred secret targets: %#v", fileset.DeferredSecretTargets)
@@ -82,7 +82,7 @@ func TestBuildFileSetIgnoredManifestRequiredWarns(t *testing.T) {
 	root := t.TempDir()
 	appDir := filepath.Join(root, "apps", "web")
 	mustWrite(t, filepath.Join(appDir, "compose.yaml"), "services: {}")
-	mustWrite(t, filepath.Join(appDir, ".skuldignore"), "compose.yaml\n")
+	mustWrite(t, filepath.Join(appDir, ".witnessignore"), "compose.yaml\n")
 
 	app := DiscoveredApplication{
 		SourceDir:     appDir,

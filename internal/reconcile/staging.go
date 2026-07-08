@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/lyssar/skuld-cli/internal/application"
-	"github.com/lyssar/skuld-cli/internal/decryptor"
+	"github.com/lyssar/witness-cli/internal/application"
+	"github.com/lyssar/witness-cli/internal/decryptor"
 )
 
 // AppStaging holds one app staging tree.
@@ -17,7 +17,7 @@ type AppStaging struct {
 }
 
 func buildAppStaging(ctx context.Context, ageKeyPath string, decryptors map[string]decryptor.Decryptor, app application.DiscoveredApplication, fileset application.FileSet) (AppStaging, func() error, error) {
-	root, err := os.MkdirTemp("", "skuld-stage-*")
+	root, err := os.MkdirTemp("", "witness-stage-*")
 	if err != nil {
 		return AppStaging{}, nil, fmt.Errorf("creating staging root: %w", err)
 	}

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	s "strings"
 
-	"github.com/lyssar/skuld-cli/internal/application"
+	"github.com/lyssar/witness-cli/internal/application"
 )
 
 // DriftResult captures non-secret drift findings.

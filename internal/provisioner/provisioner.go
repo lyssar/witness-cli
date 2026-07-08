@@ -3,7 +3,7 @@ package provisioner
 import (
 	"context"
 
-	"github.com/lyssar/skuld-cli/internal/application"
+	"github.com/lyssar/witness-cli/internal/application"
 )
 
 // RuntimeContext provides stable reconcile inputs to provisioners.

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const APP_NAME = "skuld-cli"
+const APP_NAME = "witness"
 
 func CheckErr(err error) {
 	if err != nil {

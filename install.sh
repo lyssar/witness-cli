@@ -2,13 +2,13 @@
 set -euo pipefail
 
 # ──────────────────────────────────────────────
-#  Skuld CLI — install.sh
-#  Download and install the latest skuld-cli binary
-#  USAGE: curl -sfL https://raw.githubusercontent.com/lyssar/skuld-cli/main/install.sh | sh
+#  Witness — install.sh
+#  Download and install the latest witness binary
+#  USAGE: curl -sfL https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh | sh
 # ──────────────────────────────────────────────
 
-REPO="lyssar/skuld-cli"
-BIN_NAME="skuld-cli"
+REPO="lyssar/witness-cli"
+BIN_NAME="witness"
 DEFAULT_INSTALL_DIR="${HOME}/.local/bin"
 
 # --- Colors ---
@@ -158,7 +158,7 @@ ensure_path() {
 #  Main
 # ──────────────────────────────────────────────
 
-header "Skuld CLI — Installer"
+header "Witness — Installer"
 echo ""
 
 # Parse arguments
@@ -208,7 +208,7 @@ fi
 header "Next steps"
 echo "  1. Create an observer:     ${BIN_NAME} init my-server --local"
 echo "  2. Create an application:  ${BIN_NAME} new-app"
-echo "  3. Run reconciliation:     ${BIN_NAME} reconcile ~/.config/skuld-cli/my-server/"
+echo "  3. Run reconciliation:     ${BIN_NAME} reconcile ~/.config/witness/my-server/"
 echo ""
-echo "  📖 Full documentation: https://lyssar.github.io/skuld-cli/"
+echo "  📖 Full documentation: https://lyssar.github.io/witness-cli/"
 echo ""

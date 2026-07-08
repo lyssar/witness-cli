@@ -1,6 +1,6 @@
-# Skuld CLI Concept
+# Witness CLI Concept
 
-`skuld-cli` is a GitOps CLI for bare servers.
+`witness` is a GitOps CLI for bare servers.
 
 The system is split into two levels:
 
@@ -45,17 +45,17 @@ Example:
 apps/
   caddy/
     docker-compose.yaml
-    skuld.yaml
+    witness.yaml
   ftb-stoneblock-2/
     docker-compose.yaml
     extra-mods/
-    skuld.yaml
+    witness.yaml
   my-web-app/
     docker-compose.yaml
-    skuld.yaml
+    witness.yaml
 ```
 
-The directory containing `skuld.yaml` is the deployable source for that app.
+The directory containing `witness.yaml` is the deployable source for that app.
 
 ---
 
@@ -81,7 +81,7 @@ Responsibilities:
 Example:
 
 ```text
-skuld deploy --host 127.0.0.1 --ssh-key id_rsa --ssh-user deployuser my-observer.yaml
+witness deploy --host 127.0.0.1 --ssh-key id_rsa --ssh-user deployuser my-observer.yaml
 ```
 
 Behavior:
@@ -110,13 +110,13 @@ Responsibilities:
 Canonical Observer shape:
 
 ```yaml
-apiVersion: skuld/v1alpha1
+apiVersion: witness/v1alpha1
 kind: Observer
 metadata:
   name: my-observer
   user: deployuser
 spec:
-  destination: /opt/skuld
+  destination: /opt/witness
   project: my-observer
   source:
     path: apps
@@ -151,13 +151,13 @@ The Observer keeps control-plane data separate from runtime payload.
 Example:
 
 ```text
-/home/deploy/.config/skuld-cli/my-observer/
+/home/deploy/.config/witness/my-observer/
 ├── manifest.yaml
 ├── age.key
 ├── state.json
 └── repo/
 
-/opt/skuld/
+/opt/witness/
 ├── apps/
 │   └── my-app/
 │       ├── docker-compose.yaml
@@ -174,15 +174,15 @@ This separation is important so control-plane secrets like the observer age key 
 ## Application Discovery Rules
 
 - discovery is recursive below `spec.source.path`
-- any directory containing exactly `skuld.yaml` is an app
+- any directory containing exactly `witness.yaml` is an app
 - nested apps are forbidden
 - the app source is that directory itself
 - operational identity is derived from the relative path below the discovery root
 
 Examples:
 
-- `apps/bla/caddy/skuld.yaml` → app identity `bla/caddy`
-- `apps/blub/caddy/skuld.yaml` → app identity `blub/caddy`
+- `apps/bla/caddy/witness.yaml` → app identity `bla/caddy`
+- `apps/blub/caddy/witness.yaml` → app identity `blub/caddy`
 
 Both are valid.
 
@@ -215,7 +215,7 @@ The Observer remains the installed bare-server control loop.
 
 The new `Application` contract defines how app directories in Git are turned into managed runtime workloads on that host.
 
-This gives `skuld-cli` an ArgoCD-like model for bare servers:
+This gives `witness` an ArgoCD-like model for bare servers:
 
 - Observer = host-level controller
 - Application = workload definition

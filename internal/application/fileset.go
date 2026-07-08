@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// WarningCodeIgnoredManifestRequiredFile reports composeFiles ignored by .skuldignore.
+// WarningCodeIgnoredManifestRequiredFile reports composeFiles ignored by .witnessignore.
 const WarningCodeIgnoredManifestRequiredFile = "ignored_manifest_required_file"
 
 // FilesetWarning is a structured fileset warning.
@@ -109,7 +109,7 @@ func BuildFileSet(app DiscoveredApplication, submodulePaths []string) (FileSet, 
 				warnings = append(warnings, FilesetWarning{
 					Code:    WarningCodeIgnoredManifestRequiredFile,
 					Path:    relSlash,
-					Message: "compose file is ignored by .skuldignore but remains managed",
+					Message: "compose file is ignored by .witnessignore but remains managed",
 				})
 			} else {
 				return nil

@@ -13,8 +13,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"github.com/lyssar/skuld-cli/templates"
-	"github.com/lyssar/skuld-cli/utils"
+	"github.com/lyssar/witness-cli/templates"
+	"github.com/lyssar/witness-cli/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +23,7 @@ var (
 	deployProjectNamePattern  = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 )
 
-const deploySudoPasswordEnv = "SKULD_SUDO_PASSWORD"
+const deploySudoPasswordEnv = "WITNESS_SUDO_PASSWORD"
 
 func validateDeploymentInputs(projectName string, username string, destination string) error {
 	if !deployProjectNamePattern.MatchString(strings.ToLower(projectName)) {
@@ -43,7 +43,7 @@ func randomRemoteTmpDir(projectName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("random tmp dir suffix: %w", err)
 	}
-	return fmt.Sprintf("/tmp/skuld-%s-%d", strings.ToLower(projectName), n.Int64()), nil
+	return fmt.Sprintf("/tmp/witness-%s-%d", strings.ToLower(projectName), n.Int64()), nil
 }
 
 type SSHConfig struct {
@@ -199,10 +199,10 @@ func (dh *DeployHandler) Validate() error {
 		}
 	}
 
-	stdOut, stdErr = dh.runSudo(remoteClient, "command -v skuld-cli", &observer.Metadata.User)
+	stdOut, stdErr = dh.runSudo(remoteClient, "command -v witness", &observer.Metadata.User)
 
 	if stdErr != nil {
-		return fmt.Errorf("skuld-cli not on target host found %s (error %s)", string(stdOut), stdErr)
+		return fmt.Errorf("witness not on target host found %s (error %s)", string(stdOut), stdErr)
 	}
 
 	stdOut, stdErr = dh.runSudo(remoteClient, "command -v age", &observer.Metadata.User)
@@ -358,7 +358,7 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 		}
 	}()
 
-	// Upload skuld-cli binary to remote host
+	// Upload witness binary to remote host
 	binaryPath := dh.BinaryPath
 	if binaryPath == "" {
 		exePath, err := os.Executable()
@@ -367,12 +367,12 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 		}
 		binaryPath = exePath
 	}
-	remoteBinaryTmpPath := path.Join(tmpRemoteDir, "skuld-cli")
-	utils.LogInfo("Uploading skuld-cli binary", "src", binaryPath, "dst", remoteBinaryTmpPath)
+	remoteBinaryTmpPath := path.Join(tmpRemoteDir, "witness")
+	utils.LogInfo("Uploading witness binary", "src", binaryPath, "dst", remoteBinaryTmpPath)
 	if err := client.TransferFile(binaryPath, remoteBinaryTmpPath); err != nil {
 		return fmt.Errorf("uploading binary: %w", err)
 	}
-	stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("mv %s /usr/local/bin/skuld-cli && chmod 755 /usr/local/bin/skuld-cli", utils.ShellQuote(remoteBinaryTmpPath)), nil)
+	stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("mv %s /usr/local/bin/witness && chmod 755 /usr/local/bin/witness", utils.ShellQuote(remoteBinaryTmpPath)), nil)
 	if stdErr != nil {
 		return fmt.Errorf("installing binary on remote: %s", string(stdOut))
 	}

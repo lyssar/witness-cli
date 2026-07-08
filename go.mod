@@ -1,4 +1,4 @@
-module github.com/lyssar/skuld-cli
+module github.com/lyssar/witness-cli
 
 go 1.25.5
 

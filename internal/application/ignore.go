@@ -9,7 +9,7 @@ import (
 	dotignore "github.com/codeglyph/go-dotignore"
 )
 
-const ignoreFileName = ".skuldignore"
+const ignoreFileName = ".witnessignore"
 
 type ignoreMatcher interface {
 	Match(path string, isDir bool) bool

@@ -12,8 +12,8 @@ import (
 	"filippo.io/age"
 	"github.com/charmbracelet/huh"
 	"github.com/creasty/defaults"
-	"github.com/lyssar/skuld-cli/templates"
-	"github.com/lyssar/skuld-cli/utils"
+	"github.com/lyssar/witness-cli/templates"
+	"github.com/lyssar/witness-cli/utils"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -44,7 +44,7 @@ type Spec struct {
 }
 
 type Observer struct {
-	ApiVersion string   `default:"skuld/v1alpha1" yaml:"apiVersion"`
+	ApiVersion string   `default:"witness/v1alpha1" yaml:"apiVersion"`
 	Kind       string   `default:"Observer" yaml:"kind"`
 	Metadata   Metadata `yaml:"metadata"`
 	Spec       Spec     `yaml:"spec"`
@@ -354,7 +354,7 @@ func (observer *Observer) WriteConfigRoot() error {
 	}
 
 	utils.LogSuccess("Observer config root created", "path", configRoot)
-	slog.Info(fmt.Sprintf("Run: skuldcli reconcile %s", configRoot))
+	slog.Info(fmt.Sprintf("Run: witness reconcile %s", configRoot))
 
 	return nil
 }

@@ -10,13 +10,13 @@ import (
 	"github.com/charmbracelet/fang"
 	sysdjournaldslog "github.com/iguanesolutions/go-systemd/v5/journald/slog"
 	"github.com/lmittmann/tint"
-	"github.com/lyssar/skuld-cli/utils"
+	"github.com/lyssar/witness-cli/utils"
 	"github.com/spf13/cobra"
 )
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "skuldcli",
+	Use:   "witness",
 	Short: "Skuld CLI – the future’s watcher for your fleet",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		logLevelStr := strings.ToUpper(os.Getenv("LOG_LEVEL"))
