@@ -11,35 +11,11 @@ title: Architecture
 
 Skuld follows a **two-phase controller** pattern: observe/plan then execute. Every reconciliation loop is read-only during observation; mutations happen only in the apply phase.
 
-```
-                    ┌──────────────────┐
-                    │   Git Repository │  ◄── source of truth
-                    │   apps/hello/    │
-                    │   ├─ skuld.yaml  │
-                    │   ├─ compose.yaml│
-                    │   └─ secret.age  │
-                    └────────┬─────────┘
-                             │ git clone/fetch
-                             ▼
-                    ┌──────────────────┐
-                    │    Sync Dir      │  repo/.git + apps/
-                    └────────┬─────────┘
-                             │ discover skuld.yaml
-                             ▼
-                    ┌──────────────────┐
-                    │   Staging Area   │  stage files + decrypt secrets
-                    └────────┬─────────┘
-                             │ diff against state.json
-                             ▼
-                    ┌──────────────────┐
-                    │   Apply Phase    │  create / update / delete
-                    └────────┬─────────┘
-                             │ docker compose
-                             ▼
-                    ┌──────────────────┐
-                    │  Running State   │  containers, networks, volumes
-                    └──────────────────┘
-```
+<div class="highlight-box">
+<strong>Click to expand:</strong> Full-resolution architecture diagram below.
+</div>
+
+![Skuld Reconciliation Pipeline]({{ site.baseurl }}/assets/img/architecture.svg)
 
 ## Core Concepts
 
