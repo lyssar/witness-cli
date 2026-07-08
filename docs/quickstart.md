@@ -1,91 +1,113 @@
 ---
 layout: default
+title: Quickstart
 ---
 
 # Quickstart
 
-This guide walks through setting up Skuld on a local machine from scratch.
+> *"From one Git repo, many applications arise."*
 
-## 1. Install Skuld
+This guide walks through setting up Skuld from scratch on a local machine.
+
+## Step 1: Install Skuld
 
 ```bash
 curl -sfL https://raw.githubusercontent.com/lyssar/skuld-cli/main/install.sh | sh
 ```
 
-Or follow the [installation guide](installation) for other methods.
+Or see the [installation guide](installation) for alternatives.
 
-## 2. Create an Observer
+## Step 2: Create an Observer
 
-An **Observer** is the top-level config — it defines which Git repo to watch, where to sync, and how often.
+The **Observer** is your watcher — it defines the Git repository to watch and where to sync:
 
 ```bash
 skuld-cli init my-server --local
 ```
 
-This interactive wizard will ask for:
-- Observer name
-- Execution user (e.g., `skuld-daemon`)
-- Destination path (where repos are synced)
-- Git repo URL and credentials
-- Target revision and source path
+The interactive wizard will ask for:
 
-The `--local` flag creates a complete config root at `~/.config/skuld-cli/my-server/` with:
-- `manifest.yaml` — the observer definition
-- `age.key` — a freshly generated age identity
+| Prompt | Example | Description |
+|---|---|---|
+| Observer name | `my-server` | Identifier for this observer |
+| Execution user | `skuld-daemon` | System user for reconcile |
+| Destination path | `/var/lib/skuld` | Root for repo sync |
+| Repository URL | `https://github.com/org/infra.git` | Git repo to watch |
+| Target revision | `main` | Branch, tag, or commit |
+| Git user | `harness` | Git auth user |
+| Access token | `ghp_...` | Git auth token |
 
-## 3. Create an Application
+The `--local` flag creates a complete config root at `~/.config/skuld-cli/my-server/`:
 
-Applications declare what runs on the server.
-
-```bash
-cd ~/.config/skuld-cli/my-server/
-skuld-cli new-app
+```
+~/.config/skuld-cli/my-server/
+├── manifest.yaml    # Observer definition
+└── age.key          # Generated age identity
 ```
 
-The wizard will prompt for:
-- App name (e.g., `hello`)
-- Provisioner type (`docker-compose`)
-- Compose file paths
-- Optional age-encrypted secrets
+## Step 3: Create an Application
+
+Applications declare what runs on your server. Generate one with:
+
+```bash
+skuld-cli new-app -a ~/.config/skuld-cli/my-server/age.key
+```
+
+The wizard prompts for:
+
+| Prompt | Example | Description |
+|---|---|---|
+| App name | `hello` | Application identifier |
+| Provisioner | `docker-compose` | Deploy method |
+| Compose files | `compose.yaml` | Paths relative to app directory |
+| Secrets | (optional) | Encrypted files + decrypt target |
 
 Output is a `skuld-app.yaml` file. Place it in your Git repo:
 
 ```
 apps/
-  hello/
-    skuld.yaml       # ← generated here
-    compose.yaml     # your Docker Compose file
-    secret.env.age   # optional encrypted secret
+└── hello/
+    ├── skuld.yaml       # ← generated manifest
+    ├── compose.yaml     # your Docker Compose file
+    └── secret.env.age   # optional encrypted secret
 ```
 
-## 4. Reconcile
+## Step 4: Reconcile
 
-Run a reconciliation cycle:
+Run a reconciliation cycle to apply the desired state:
 
 ```bash
 skuld-cli reconcile ~/.config/skuld-cli/my-server/
 ```
 
-Skuld will:
-1. Clone/fetch the Git repo
-2. Discover applications from the repo
-3. Build a fileset per application
-4. Stage compose files and decrypt secrets
-5. Compare against the running state
-6. Apply changes (create/update/delete)
+<div class="highlight-box">
+<strong>What happens during reconcile:</strong><br>
+<strong>1.</strong> Git repo sync (clone or fetch)<br>
+<strong>2.</strong> Application discovery (finds all <code>skuld.yaml</code> files)<br>
+<strong>3.</strong> Fileset staging with decrypted secrets<br>
+<strong>4.</strong> Drift detection against current state<br>
+<strong>5.</strong> Apply — create, update, or delete applications
+</div>
 
-## 5. Deploy to a Remote Host
+## Step 5: Deploy to a Remote Host
 
-For production, deploy the observer to a remote host:
+For production, push the observer to a remote server:
 
 ```bash
-skuld-cli deploy manifest.yaml \
+skuld-cli deploy ~/.config/skuld-cli/my-server/manifest.yaml \
   --host myserver.example.com \
   --ssh-user deploy \
   --age-key ~/.config/skuld-cli/my-server/age.key
 ```
 
-This installs:
-- `skuld-cli` binary to `/usr/local/bin/`
-- Systemd service + timer for periodic reconciliation
-- Hardened security directives (NoNewPrivileges, ProtectHome, PrivateTmp, …)
+This deploys:
+- **skuld-cli binary** to `/usr/local/bin/`
+- **systemd service** + **timer** for periodic reconciliation
+- **Hardened security** — `NoNewPrivileges`, `ProtectHome`, `PrivateTmp`, system call filtering
+
+---
+
+## Next Steps
+
+- [Commands →](commands) — full reference for all commands
+- [Architecture →](architecture) — deep dive into the reconcile cycle

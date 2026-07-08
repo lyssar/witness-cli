@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ page.title | default: site.title }}</title>
+  <link rel="stylesheet" href="{{ site.baseurl }}/assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="nod-header">
+    <div class="container">
+      <a href="{{ site.baseurl }}/" class="logo-link">
+        <img src="{{ site.baseurl }}/assets/logo.png" alt="Skuld CLI" class="logo">
+        <div class="title-block">
+          <h1 class="site-title">Skuld CLI</h1>
+          <p class="site-subtitle">{{ site.description }}</p>
+        </div>
+      </a>
+    </div>
+    <nav class="nod-nav">
+      <div class="container">
+        <a href="{{ site.baseurl }}/">Home</a>
+        <a href="{{ site.baseurl }}/installation">Install</a>
+        <a href="{{ site.baseurl }}/quickstart">Quickstart</a>
+        <a href="{{ site.baseurl }}/commands">Commands</a>
+        <a href="{{ site.baseurl }}/architecture">Architecture</a>
+        <a href="https://github.com/lyssar/skuld-cli" class="external">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container main-content">
+    {{ content }}
+  </main>
+
+  <footer class="nod-footer">
+    <div class="container">
+      <p class="footer-tagline">☥ Peace through power ☥</p>
+      <p class="footer-text">Skuld CLI — the future's watcher for your fleet</p>
+      <p class="footer-copy">Kane lives in death</p>
+    </div>
+  </footer>
+</body>
+</html>

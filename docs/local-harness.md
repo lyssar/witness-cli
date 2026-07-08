@@ -1,78 +1,87 @@
+---
+layout: default
+title: Local Harness
+---
+
 # Local Harness
 
-The local harness validates the reconcile runtime command against a disposable Docker Compose container.
+> *"Test in the temple, deploy to the field."*
+
+The local harness validates the reconcile runtime command against a disposable Docker Compose container — no SSH, no systemd, no remote hosts needed.
 
 ## Scope
 
-This harness validates:
+<div class="highlight-box">
+<strong>Validates:</strong><br>
+1. Local <code>skuld-cli</code> build output<br>
+2. Prepared observer config root under <code>.local/</code><br>
+3. Seeded source repository mounted into the container<br>
+4. <code>skuld-cli reconcile</code> execution inside the container<br>
+5. Repository sync, application discovery, drift analysis, and state persistence
+</div>
 
-1. local `skuld-cli` build output
-2. prepared observer config root under `.local/`
-3. seeded source repository mounted into the container
-4. `skuld-cli reconcile <config-root>` execution inside the container
-5. reconcile-time repository sync, application discovery, drift analysis, and state persistence against mounted local inputs
-
-It does **not** validate SSH, sudo, systemd, timers, or full target-host bootstrap behavior.
+**Does NOT validate:** SSH, sudo, systemd, timers, or full target-host bootstrap.
 
 ## Design
 
-- Docker Compose is the only harness orchestrator.
-- No standalone project shell-script files are used in the harness execution path.
-- The host builds `skuld-cli` first via `Taskfile.yml`.
-- The container mounts only:
-  - the built binary read-only
-  - a writable runtime root for reconcile output (`repo/`, destination files)
-  - the prepared manifest and age key read-only
-  - the seeded source repo read-only
-- The harness runs `skuld-cli reconcile <config-root>` directly in-container.
-- The host-prepared `manifest.yaml` and `age.key` are mounted into the container runtime root, so the in-container command path is `skuld-cli reconcile /workspace/harness/runtime`.
-- The host also pre-seeds the destination tree with the seeded application's managed files so the reduced smoke path remains a no-drift reconcile run and does not pretend to validate real docker-compose apply behavior.
-- No systemd, SSH, sudo, privileged mode, or cgroup mounts are used.
-- The harness image marks the mounted source repo path as a Git `safe.directory` so local bind-mounted repositories work reliably inside the container.
+- Docker Compose is the only orchestrator
+- The host builds `skuld-cli` first via `Taskfile.yml`
+- The container mounts only what it needs — read-only binary, writable runtime, read-only config and source repo
+- Runs `skuld-cli reconcile` directly in-container
+- No privileged mode, no cgroup mounts, no systemd
+- The harness image marks the source repo path as Git `safe.directory` for reliable bind mounts
 
 ## Files
 
-- Harness Dockerfile: `docker/local-harness/Dockerfile`
-- Compose file: `docker/local-harness/compose.yml`
-- Prepared local inputs: `.local/harness/`
-- Built CLI binary: `.local/bin/skuld-cli`
+| Path | Purpose |
+|---|---|
+| `docker/local-harness/Dockerfile` | Container image with age + git |
+| `docker/local-harness/compose.yml` | Compose service definition |
+| `.local/harness/` | Prepared inputs (config, repo, runtime) |
+| `.local/bin/skuld-cli` | Built CLI binary |
 
 ## Workflow
 
 ```bash
+# Prepare inputs
 task local:prepare
+
+# Run reconcile inside container
 task local:run
-```
 
-For the dedicated smoke path used by CircleCI:
-
-```bash
+# Full smoke test (CI path)
 task local:smoke
 ```
 
-## Prepared Local Inputs
+## Prepared Inputs
 
 `task local:prepare` creates or refreshes:
 
-- `.local/harness/config/manifest.yaml`
-- `.local/harness/config/age.key`
-- `.local/harness/runtime/destination/`
-- `.local/harness/runtime/`
-- `.local/harness/source-repo/`
-
-The seeded source repo contains a minimal `Application` manifest and compose file so reconcile has realistic input data.
+```
+.local/harness/
+├── config/
+│   ├── manifest.yaml    # Observer with 30s interval
+│   └── age.key          # Generated age identity
+├── runtime/
+│   └── destination/     # Pre-seeded no-drift state
+└── source-repo/
+    ├── apps/hello/
+    │   ├── skuld.yaml   # Application manifest
+    │   └── compose.yaml # Docker Compose file
+    └── .git/
+```
 
 ## Requirements
 
-- Docker
-- Docker Compose v2 (`docker compose`)
-- `task`
-- local Go toolchain
-- local `git`
+- Docker & Docker Compose v2
+- `task` (Go Task runner)
+- Go toolchain
+- Git
+- age (`age-keygen`)
 
 ## Notes
 
-- This reduced-scope harness intentionally favors simplicity and repeatability over target-host parity.
-- It is honest about scope: it exercises the reconcile runtime command path, not the former SSH/systemd deploy path.
-- `task local:prepare` removes stale abandoned SSH harness directories under `.local/harness/ssh` and `.local/harness/home` so old key material does not linger after the former SSH-based harness design.
-- `task local:smoke` additionally asserts that reconcile synced the seeded repository into `.local/harness/runtime/repo/`, preserved the seeded no-drift destination files, and wrote observer-local `state.json` output.
+- This reduced-scope harness favors simplicity and repeatability over target-host parity
+- `task local:prepare` removes stale artifacts from earlier harness designs
+- `task local:smoke` asserts repo was synced, destination files preserved, and `state.json` written
+- CircleCI runs this as the `local_harness_smoke` job on a machine executor

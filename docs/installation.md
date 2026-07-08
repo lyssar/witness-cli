@@ -1,26 +1,31 @@
 ---
 layout: default
+title: Installation
 ---
 
 # Installation
 
 ## Prerequisites
 
-- **Git** — for repository sync
-- **age** — for secret encryption/decryption ([install](https://github.com/FiloSottile/age#installation))
-- **Docker Compose** — for application deployment (if using the `docker-compose` provisioner)
+Before you join the Brotherhood, ensure your system has the necessary tools:
+
+- **Git** — repository sync
+- **age** — secret encryption/decryption ([install age](https://github.com/FiloSottile/age#installation))
+- **Docker Compose** — for application deployment (required by the `docker-compose` provisioner)
 
 ## Option 1: Install Script (recommended)
+
+One command, ready to deploy:
 
 ```bash
 curl -sfL https://raw.githubusercontent.com/lyssar/skuld-cli/main/install.sh | sh
 ```
 
-This will:
-1. Detect your OS and architecture
+The script will:
+1. Detect your OS (Linux/macOS) and architecture (amd64/arm64)
 2. Download the latest release from GitHub
 3. Install to `~/.local/bin/skuld-cli`
-4. Add `~/.local/bin` to your `PATH` if needed
+4. Add it to your `PATH` if needed
 
 ## Option 2: Go Install
 
@@ -36,7 +41,17 @@ Requires Go 1.25+.
 git clone https://github.com/lyssar/skuld-cli.git
 cd skuld-cli
 task build
-# Binary at .local/bin/skuld-cli
+# Binary ready at .local/bin/skuld-cli
+```
+
+## Option 4: Taskfile
+
+The project includes a `Taskfile.yml` with common tasks:
+
+```bash
+task build        # Build the binary
+task validate     # Run full validation suite
+task local:smoke  # Run the reduced-scope harness
 ```
 
 ## Verify
@@ -44,3 +59,9 @@ task build
 ```bash
 skuld-cli version
 ```
+
+## Next Steps
+
+<div class="highlight-box">
+<strong>→ Proceed to the <a href="quickstart">Quickstart</a></strong> to set up your first observer and deploy an application.
+</div>

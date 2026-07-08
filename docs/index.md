@@ -1,34 +1,53 @@
 ---
 layout: default
+title: Home
 ---
 
 # Skuld CLI
 
-**Skuld** is a lightweight GitOps CLI for bare servers. It continuously reconciles applications from a Git repository — similar to ArgoCD, but designed for single-server deployments without Kubernetes.
+> *"The future is not written in stone — it is reconciled from Git."*
+
+**Skuld** — named after the Norn of the future — watches your bare servers and reconciles them against a Git repository. Like ArgoCD, but for the metal fleet.
+
+## For the Brotherhood
+
+<div class="highlight-box">
+<strong>☥ One Git repo to rule them all.</strong><br>
+Define your applications, push to the repo, and Skuld enforces the state on every reconciliation cycle. Secrets encrypted with <strong>age</strong>, deployed with <strong>Docker Compose</strong>, hardened with <strong>systemd</strong>.
+</div>
 
 ## Key Features
 
-- **Observer-driven reconciliation** — daemon or timer-based sync from a Git repo
+- **Observer-driven** — daemon or timer-based sync from a Git repo
 - **Application model** — declare apps with provisioner, compose files, and age-encrypted secrets
-- **Docker Compose provisioner** — deploy and update Compose-based workloads
-- **Age encryption** — secrets encrypted at rest with `age`, decrypted at runtime
+- **Docker Compose** — deploy and update Compose-based workloads
+- **Age encryption** — secrets encrypted at rest, decrypted at runtime
 - **SSH deploy** — push config, binary, and systemd units to remote hosts
-- **Secret scrubbing** — sensitive data removed from archives on deletion
-- **Symlink-safe paths** — hardened against path traversal during cleanup
+- **Secret scrubbing** — archives sanitized on application deletion
+- **Symlink-safe** — hardened against path traversal during cleanup
 
-## Quick Start
+## Get Started
 
 ```bash
-# Create an observer config root
-skuld-cli init my-observer --local
+# Install
+curl -sfL https://raw.githubusercontent.com/lyssar/skuld-cli/main/install.sh | sh
 
-# Reconcile against your Git repo
-skuld-cli reconcile ~/.config/skuld-cli/my-observer/
+# Create an observer
+skuld-cli init my-server --local
+
+# Reconcile
+skuld-cli reconcile ~/.config/skuld-cli/my-server/
 ```
 
-## Next Steps
+## Quick Links
 
-- [Installation](installation) — install via binary, Go toolchain, or build from source
-- [Quickstart](quickstart) — full walkthrough from zero to deployed app
-- [Commands](commands) — reference for `init`, `new-app`, `reconcile`, `deploy`, `version`
-- [Architecture](architecture) — how the observer, discovery, and apply cycle work
+| Command | Description |
+|---|---|
+| [Install →](installation) | Install via script, Go, or source |
+| [Quickstart →](quickstart) | Full walkthrough from zero to deployed |
+| [Commands →](commands) | Reference for all commands |
+| [Architecture →](architecture) | How the observer cycle works |
+
+---
+
+*"The future is watching."*

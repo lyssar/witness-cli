@@ -11,6 +11,10 @@
   <a href="https://github.com/lyssar/skuld-cli/releases">📦 Releases</a>
 </p>
 
+<p align="center">
+  <em>☥ Peace through power ☥</em>
+</p>
+
 ---
 
 ## Install
@@ -70,7 +74,7 @@ This reduced harness does **not** attempt to simulate SSH, sudo, systemd, full t
 
 CircleCI now runs both `task validate` and `task local:smoke`.
 
-See `docs/local-harness.md` for exact scope and mounted paths.
+See [Local Harness documentation](https://lyssar.github.io/skuld-cli/local-harness) for exact scope and mounted paths.
 
 ## Manual Secret Inspection
 

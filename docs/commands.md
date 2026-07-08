@@ -1,10 +1,13 @@
 ---
 layout: default
+title: Commands
 ---
 
-# Command Reference
+# Commands
 
-## `skuld-cli init [OBSERVER_NAME]`
+> *"Command, control, reconcile."*
+
+## `skuld-cli init`
 
 Create an Observer manifest.
 
@@ -12,15 +15,17 @@ Create an Observer manifest.
 skuld-cli init my-server
 ```
 
-Flags:
+**Flags:**
+
 | Flag | Default | Description |
 |---|---|---|
 | `-k, --age-key` | `""` | Path to existing age private key |
-| `--local` | `false` | Create a full config root with generated age.key |
+| `--local` | `false` | Create complete config root with generated `age.key` |
 
-Without `--local`: writes a single YAML file to the current directory.
-
-With `--local`: creates `~/.config/skuld-cli/<project>/` with `manifest.yaml` + `age.key`.
+<div class="highlight-box">
+<strong>Without <code>--local</code>:</strong> writes a single YAML manifest to the current directory.<br>
+<strong>With <code>--local</code>:</strong> creates <code>~/.config/skuld-cli/&lt;project&gt;/</code> with <code>manifest.yaml</code> and a freshly generated <code>age.key</code>.
+</div>
 
 ---
 
@@ -32,22 +37,24 @@ Create an Application manifest interactively.
 skuld-cli new-app -a ~/.config/skuld-cli/my-server/age.key
 ```
 
-Flags:
+**Flags:**
+
 | Flag | Default | Description |
 |---|---|---|
 | `-a, --age-key` | `""` | Path to age private key for secret encryption |
 
 Prompts for:
-- App name
-- Provisioner type (currently `docker-compose` only)
-- Compose file paths (one per prompt, empty to finish)
-- Secrets: source file, target file, decryptor (`age`)
 
-Output: `skuld-app.yaml` in the current directory.
+- **App name** — identifier for the application
+- **Provisioner type** — `docker-compose` (currently the only option)
+- **Compose files** — path per prompt, empty to finish
+- **Secrets** — optional: source file, target file, decryptor (`age`)
+
+Output: `skuld-app.yaml`
 
 ---
 
-## `skuld-cli reconcile [CONFIG_ROOT]`
+## `skuld-cli reconcile`
 
 Run one reconciliation cycle.
 
@@ -56,19 +63,27 @@ skuld-cli reconcile ~/.config/skuld-cli/my-server/
 ```
 
 The config root must contain:
-- `manifest.yaml` — observer definition
-- `age.key` — age identity for secret decryption
 
-What happens:
-1. Git repo sync (clone or fetch)
-2. Application discovery (`skuld.yaml` files)
-3. Build + stage each application
-4. Drift detection against running state
-5. Apply creates, updates, or deletions
+| File | Purpose |
+|---|---|
+| `manifest.yaml` | Observer definition |
+| `age.key` | Age identity for secret decryption |
+
+**Reconciliation phases:**
+
+```
+Input ──► Git Sync ──► Discovery ──► Staging ──► Diff ──► Apply
+```
+
+1. **Git Sync** — clone or fetch the repository
+2. **Discovery** — walk the repo for `skuld.yaml` manifests
+3. **Staging** — build runtime filesets with decrypted secrets
+4. **Diff** — compare against stored state
+5. **Apply** — create, update, or delete applications
 
 ---
 
-## `skuld-cli deploy [MANIFEST]`
+## `skuld-cli deploy`
 
 Deploy the observer to a remote host with systemd.
 
@@ -79,33 +94,43 @@ skuld-cli deploy manifest.yaml \
   --age-key ~/.config/skuld-cli/my-server/age.key
 ```
 
-Flags:
+**Flags:**
+
 | Flag | Default | Description |
 |---|---|---|
 | `-a, --age-key` | `""` | Path to age key for remote deployment |
-| `-u, --ssh-user` | `""` | SSH user for the remote host |
+| `-u, --ssh-user` | `""` | SSH user for remote host |
 | `-k, --ssh-key` | `""` | SSH private key path (optional, uses SSH config if omitted) |
 | `--host` | `""` | Remote host to deploy to |
 | `--binary-path` | auto-detect | Path to skuld-cli binary to upload |
 
-What the deploy command does:
-1. Validates prerequisites (user exists, binary present, age installed)
-2. Creates config directories on the remote host
-3. Uploads manifest, age key, and skuld-cli binary
-4. Installs systemd service and timer units
-5. Runs `systemd-analyze verify`, `daemon-reload`, and enables the timer
+**Deploy phases:**
 
-The systemd service has full hardening:
-- `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`
-- `NoNewPrivileges=yes`, `MemoryDenyWriteExecute=yes`
-- System call filtering, namespace restrictions, and more
+1. Validate prerequisites (user exists, skuld-cli present, age installed)
+2. Create config directories on remote host
+3. Upload manifest, age key, and binary
+4. Install systemd service and timer units
+5. Enable and start the timer
+
+**Systemd hardening** applied to service unit:
+
+```
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+```
 
 ---
 
 ## `skuld-cli version`
 
-Print the installed version.
+Print the installed version:
 
 ```bash
 skuld-cli version
 ```
+
+Output includes the build version from `git describe`.

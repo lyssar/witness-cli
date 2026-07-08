@@ -1,26 +1,51 @@
 ---
 layout: default
+title: Architecture
 ---
 
 # Architecture
 
+> *"Know thy state, reconcile thy fleet."*
+
 ## Overview
 
-Skuld follows a **two-phase controller** pattern: observe/plan then execute. Every reconciliation loop is read-only during the observation phase; mutations happen only in the apply phase.
+Skuld follows a **two-phase controller** pattern: observe/plan then execute. Every reconciliation loop is read-only during observation; mutations happen only in the apply phase.
 
 ```
-Git Repo ──► Sync ──► Discover ──► Stage ──► Diff ──► Apply
-                 │           │           │        │
-                 ▼           ▼           ▼        ▼
-              git pull    find apps   decrypt    create/update/delete
-                           skuld.yaml   secrets     compose
+                    ┌──────────────────┐
+                    │   Git Repository │  ◄── source of truth
+                    │   apps/hello/    │
+                    │   ├─ skuld.yaml  │
+                    │   ├─ compose.yaml│
+                    │   └─ secret.age  │
+                    └────────┬─────────┘
+                             │ git clone/fetch
+                             ▼
+                    ┌──────────────────┐
+                    │    Sync Dir      │  repo/.git + apps/
+                    └────────┬─────────┘
+                             │ discover skuld.yaml
+                             ▼
+                    ┌──────────────────┐
+                    │   Staging Area   │  stage files + decrypt secrets
+                    └────────┬─────────┘
+                             │ diff against state.json
+                             ▼
+                    ┌──────────────────┐
+                    │   Apply Phase    │  create / update / delete
+                    └────────┬─────────┘
+                             │ docker compose
+                             ▼
+                    ┌──────────────────┐
+                    │  Running State   │  containers, networks, volumes
+                    └──────────────────┘
 ```
 
 ## Core Concepts
 
 ### Observer
 
-The **Observer** is the top-level configuration — it defines the Git source, the sync destination, and the reconciliation interval. Each observer manages exactly one Git repository.
+The **Observer** is the watcher — it defines the Git source, sync destination, and timing.
 
 ```yaml
 apiVersion: skuld/v1alpha1
@@ -41,7 +66,7 @@ spec:
 
 ### Application
 
-An **Application** declares a workload to deploy. Applications are discovered from `skuld.yaml` files in the synced repository.
+An **Application** declares a workload. Discovered from `skuld.yaml` files in the synced repo.
 
 ```yaml
 apiVersion: skuld.dev/v1alpha1
@@ -60,15 +85,21 @@ spec:
 
 ### Reconciliation Cycle
 
-1. **Git Sync** — clones or fetches the repository to a local working directory
-2. **Discovery** — walks the repo tree for `skuld.yaml` files and validates them against the v1 schema
-3. **Staging** — assembles each application's runtime directory with decrypted secrets and compose files
-4. **Drift Detection** — compares the staged state against the local `state.json`
-5. **Apply** — creates, updates, or deletes applications to match the desired state
+| Phase | Description |
+|---|---|
+| **Git Sync** | Clone or fetch the repository to a local working directory |
+| **Discovery** | Walk the repo tree for `skuld.yaml` files, validate against v1 schema |
+| **Staging** | Assemble runtime directory with decrypted secrets and compose files |
+| **Drift Detection** | Compare staged state against `state.json` |
+| **Apply** | Create, update, or delete applications to match desired state |
 
-### Secrets
+## Secrets
 
-Secrets are encrypted with [age](https://age-encryption.org/) at rest in the Git repository. At reconcile time, they are decrypted with the observer's `age.key` before the compose file is uploaded to the destination.
+Secrets are encrypted with [age](https://age-encryption.org/) at rest in the Git repository. At reconcile time, they are decrypted with the observer's `age.key`.
+
+```
+Git repo: secret.env.age  ──age-decrypt──►  Destination: .env
+```
 
 The identity file is a standard age private key:
 
@@ -78,52 +109,58 @@ The identity file is a standard age private key:
 AGE-SECRET-KEY-1…
 ```
 
-### Deletion and Cleanup
+## Deletion & Cleanup
 
 When an application is removed from the repository:
 
-1. The runtime directory is archived (timestamped backup)
-2. The provisioner (`docker-compose down`) tears down the application
-3. Any `.age` files in the archive are **scrubbed** — overwritten with zeros before the final cleanup
+1. The runtime directory is **archived** (timestamped backup)
+2. The provisioner runs `docker compose down` to tear down the application
+3. Any `.age` files in the archive are **scrubbed** — overwritten with zeros
 4. Scrubbing uses `filepath.EvalSymlinks` to prevent symlink-based path traversal
 
 ## Security Model
 
-- **No secret material in the Git repo** — only age-encrypted files
-- **No secrets in logs** — git URLs are sanitized before logging
-- **Symlink-safe cleanup** — path traversal prevented via `EvalSymlinks` + prefix check
-- **Hardened systemd units** — `NoNewPrivileges`, `ProtectHome`, `PrivateTmp`, system call filtering
-- **SSH-based operation** — no open ports beyond SSH and the deployed services
+| Layer | Protection |
+|---|---|
+| **Repository** | No plaintext secrets — only age-encrypted files |
+| **Logging** | Git URLs sanitized before logging (credentials stripped) |
+| **Cleanup** | Symlink-safe via `EvalSymlinks` + prefix path check |
+| **Systemd** | `NoNewPrivileges`, `ProtectHome`, `PrivateTmp`, system call filtering |
+| **Deploy** | SSH-only — no open ports beyond SSH and deployed services |
 
 ## Data Flow
 
 ```
-┌──────────────────┐
-│   Git Repository │  ◄── skuld-cli reconcile
-│   apps/hello/    │
-│   ├─ skuld.yaml  │
-│   ├─ compose.yaml│
-│   └─ secret.age  │
-└────────┬─────────┘
-         │ git clone/fetch
-         ▼
-┌──────────────────┐
-│  Sync Directory   │  /var/lib/skuld/repo/
-│  (.git + apps/)   │
-└────────┬─────────┘
-         │ discover skuld.yaml
-         ▼
-┌──────────────────┐
-│  State Store      │  state.json (per-application SHA tracking)
-└────────┬─────────┘
-         │ diff & apply
-         ▼
-┌──────────────────┐
-│  Destination      │  /var/lib/skuld/destination/apps/hello/
-│  ├─ compose.yaml  │
-│  └─ .env          │  (decrypted from secret.age)
-└────────┬─────────┘
-         │ docker compose up
-         ▼
-    Running Containers
+┌─────────────────────────────────────────────────────────┐
+│                    Git Repository                        │
+│  apps/hello/{skuld.yaml, compose.yaml, secret.age}       │
+└────────────────────┬────────────────────────────────────┘
+                     │ git clone/fetch
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│                  Sync Directory                          │
+│  ~/.local/harness/runtime/repo/                          │
+│  ├── .git/                                               │
+│  └── apps/hello/skuld.yaml                              │
+└────────────────────┬────────────────────────────────────┘
+                     │ discover
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│               State Store (state.json)                   │
+│  Tracks per-application content SHA for drift detection  │
+└────────────────────┬────────────────────────────────────┘
+                     │ diff
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│                  Destination                             │
+│  /var/lib/skuld/destination/apps/hello/                  │
+│  ├── compose.yaml                                        │
+│  └── .env  (decrypted from secret.age)                   │
+└────────────────────┬────────────────────────────────────┘
+                     │ docker compose up
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│                Running Containers                        │
+│  hello_web_1, hello_db_1, ...                            │
+└─────────────────────────────────────────────────────────┘
 ```

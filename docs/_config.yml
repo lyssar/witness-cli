@@ -1,7 +1,5 @@
-theme: jekyll-theme-cayman
 title: Skuld CLI
-description: GitOps CLI for bare servers — observer-driven application reconciliation
-github:
-  is_project_page: true
-  repository_url: https://github.com/lyssar/skuld-cli
-show_downloads: false
+description: the future's watcher for your fleet
+baseurl: "/skuld-cli"
+url: "https://lyssar.github.io"
+theme: null
