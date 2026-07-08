@@ -29,7 +29,7 @@ func TestRunnerRunValidationErrors(t *testing.T) {
 
 	t.Run("missing manifest", func(t *testing.T) {
 		configRoot := t.TempDir()
-		writeFile(t, filepath.Join(configRoot, "age.key"), "dummy")
+		writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
 
 		err := NewRunner(configRoot).Run(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "manifest file could not be found") {
@@ -47,10 +47,36 @@ func TestRunnerRunValidationErrors(t *testing.T) {
 		}
 	})
 
+	t.Run("age key must not be group readable", func(t *testing.T) {
+		configRoot := t.TempDir()
+		writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest("https://example.com/repo.git", "HEAD", "/", "/tmp/skuld"))
+		agePath := filepath.Join(configRoot, "age.key")
+		writeFile(t, agePath, "dummy")
+		if err := os.Chmod(agePath, 0o644); err != nil {
+			t.Fatalf("chmod age key: %v", err)
+		}
+
+		err := NewRunner(configRoot).Run(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "age file permissions must not grant group/other access") {
+			t.Fatalf("expected age key permission error, got %v", err)
+		}
+	})
+
+	t.Run("age key must parse valid identities", func(t *testing.T) {
+		configRoot := t.TempDir()
+		writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest("https://example.com/repo.git", "HEAD", "/", "/tmp/skuld"))
+		writeFile(t, filepath.Join(configRoot, "age.key"), "not-an-age-key")
+
+		err := NewRunner(configRoot).Run(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "age file must contain valid age identities") {
+			t.Fatalf("expected invalid age key parse error, got %v", err)
+		}
+	})
+
 	t.Run("repo url required", func(t *testing.T) {
 		configRoot := t.TempDir()
 		writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest("  ", "HEAD", "/", "/tmp/skuld"))
-		writeFile(t, filepath.Join(configRoot, "age.key"), "dummy")
+		writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
 
 		err := NewRunner(configRoot).Run(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "manifest spec.source.repoURL is required") {
@@ -61,7 +87,7 @@ func TestRunnerRunValidationErrors(t *testing.T) {
 	t.Run("repo url must not be option-like", func(t *testing.T) {
 		configRoot := t.TempDir()
 		writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest("--upload-pack=/tmp/pwn", "HEAD", "/", "/tmp/skuld"))
-		writeFile(t, filepath.Join(configRoot, "age.key"), "dummy")
+		writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
 
 		err := NewRunner(configRoot).Run(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "manifest spec.source.repoURL must not start with '-'") {
@@ -72,7 +98,7 @@ func TestRunnerRunValidationErrors(t *testing.T) {
 	t.Run("target revision required", func(t *testing.T) {
 		configRoot := t.TempDir()
 		writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest("https://example.com/repo.git", "  ", "/", "/tmp/skuld"))
-		writeFile(t, filepath.Join(configRoot, "age.key"), "dummy")
+		writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
 
 		err := NewRunner(configRoot).Run(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "manifest spec.source.targetRevision is required") {
@@ -83,7 +109,7 @@ func TestRunnerRunValidationErrors(t *testing.T) {
 	t.Run("destination required", func(t *testing.T) {
 		configRoot := t.TempDir()
 		writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest("https://example.com/repo.git", "HEAD", "/", "  "))
-		writeFile(t, filepath.Join(configRoot, "age.key"), "dummy")
+		writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
 
 		err := NewRunner(configRoot).Run(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "manifest spec.destination is required") {
@@ -94,7 +120,7 @@ func TestRunnerRunValidationErrors(t *testing.T) {
 	t.Run("destination absolute", func(t *testing.T) {
 		configRoot := t.TempDir()
 		writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest("https://example.com/repo.git", "HEAD", "/", "relative/path"))
-		writeFile(t, filepath.Join(configRoot, "age.key"), "dummy")
+		writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
 
 		err := NewRunner(configRoot).Run(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "manifest spec.destination must be absolute") {
@@ -181,15 +207,34 @@ func TestRunnerRunDiscoversApplications(t *testing.T) {
 	}
 
 	fixture := newGitFixture(t)
-	configRoot := t.TempDir()
 
-	destinationRoot := filepath.Join(t.TempDir(), "dest")
-	writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "apps", destinationRoot))
-	writeFile(t, filepath.Join(configRoot, "age.key"), "dummy")
+		t.Run("discovery root subtree", func(t *testing.T) {
+			configRoot := t.TempDir()
+			destinationRoot := filepath.Join(t.TempDir(), "dest")
+			writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "apps", destinationRoot))
+			writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
+		writeFile(t, filepath.Join(destinationRoot, "apps", "app-main", "skuld.yaml"), appManifest("app-main"))
+		writeFile(t, filepath.Join(destinationRoot, "apps", "app-main", "compose.yaml"), "services: {}\n")
 
-	if err := NewRunner(configRoot).Run(context.Background()); err != nil {
-		t.Fatalf("runner run: %v", err)
-	}
+		if err := NewRunner(configRoot).Run(context.Background()); err != nil {
+			t.Fatalf("runner run: %v", err)
+		}
+
+		if _, err := os.Stat(filepath.Join(configRoot, "repo", "apps", "app-main", "skuld.yaml")); err != nil {
+			t.Fatalf("expected synced app manifest in runtime repo: %v", err)
+		}
+	})
+
+		t.Run("missing discovery root is treated as zero apps", func(t *testing.T) {
+			configRoot := t.TempDir()
+			destinationRoot := filepath.Join(t.TempDir(), "dest")
+			writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "missing", destinationRoot))
+			writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
+
+		if err := NewRunner(configRoot).Run(context.Background()); err != nil {
+			t.Fatalf("runner run: %v", err)
+		}
+	})
 }
 
 func TestSubmodulePathsUnderDiscoveryRoot(t *testing.T) {

@@ -13,7 +13,8 @@ GO      := go
 GOOS   := linux
 GOARCH := amd64
 CGO_ENABLED := 0
-GOFLAGS := -trimpath -ldflags="-s -w"
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+GOFLAGS := -trimpath -ldflags="-s -w -X github.com/lyssar/skuld-cli/version.Version=$(VERSION)"
 
 # =========================
 # Deploy configuration

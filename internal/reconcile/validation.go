@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+
+	"filippo.io/age"
 )
 
 type runnerValidation struct {
@@ -40,12 +43,46 @@ func (r *Runner) validateRun(ctx context.Context) (runnerValidation, error) {
 	if !fileExists(agePath) {
 		return runnerValidation{}, fmt.Errorf("age file could not be found in config root (%s)", agePath)
 	}
+	if err := validateAgeKeyPath(agePath); err != nil {
+		return runnerValidation{}, err
+	}
 
 	return runnerValidation{
 		configRoot:   configRoot,
 		manifestPath: manifestPath,
 		agePath:      agePath,
 	}, nil
+}
+
+func validateAgeKeyPath(agePath string) error {
+	info, err := os.Lstat(agePath)
+	if err != nil {
+		return fmt.Errorf("inspect age file in config root (%s): %w", agePath, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("age file must not be a symlink (%s)", agePath)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("age file must be a regular file (%s)", agePath)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("age file permissions must not grant group/other access (%s)", agePath)
+	}
+	keyFile, err := os.Open(agePath)
+	if err != nil {
+		return fmt.Errorf("open age file for validation (%s): %w", agePath, err)
+	}
+	defer func() {
+		_ = keyFile.Close()
+	}()
+	identities, err := age.ParseIdentities(keyFile)
+	if err != nil {
+		return fmt.Errorf("age file must contain valid age identities (%s): %w", agePath, err)
+	}
+	if len(identities) == 0 {
+		return fmt.Errorf("age file must contain at least one age identity (%s)", agePath)
+	}
+	return nil
 }
 
 func validateObserverManifest(manifest observerManifest) (validatedManifestSource, error) {

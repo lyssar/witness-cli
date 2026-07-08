@@ -9,7 +9,7 @@ description: GitOps CLI for bare servers with observer-driven application reconc
 - **Purpose:** GitOps CLI for bare servers with observer-driven application reconciliation
 - **Go Version:** 1.25.5
 - **Downstream Consumers:** no
-- **CI/CD:** none yet / local build-test-doc workflow
+- **CI/CD:** CircleCI runs `task validate` and a reduced-scope local harness smoke path; local build-test-doc workflow remains available
 
 ## Go Standards (All Agents)
 
@@ -22,9 +22,8 @@ description: GitOps CLI for bare servers with observer-driven application reconc
 ## CI/CD Commands (for Platform Engineer and Code Analyst)
 
 ```bash
-go vet ./...
-golangci-lint run
-go test ./... -race -count=1
+task validate
+task local:smoke
 ```
 
 ## Code Analyst Checklist Additions

@@ -55,6 +55,25 @@ func TestDiscoverApplicationsExactManifestNameOnly(t *testing.T) {
 	}
 }
 
+func TestDiscoverApplicationsRejectsNonDirectoryRoot(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	discoveryRoot := filepath.Join(root, "skuld.yaml")
+	if err := os.WriteFile(discoveryRoot, []byte(validManifestYAML("app")), 0o600); err != nil {
+		t.Fatalf("write discovery root file: %v", err)
+	}
+
+	_, err := DiscoverApplications(discoveryRoot)
+	if err == nil {
+		t.Fatal("expected non-directory root error")
+	}
+
+	if !strings.Contains(err.Error(), "must be a directory") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestDiscoverApplicationsRejectsNestedApps(t *testing.T) {
 	t.Parallel()
 

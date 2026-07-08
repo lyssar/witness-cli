@@ -56,6 +56,7 @@ type DeployHandler struct {
 	AgeFilePath string
 	Manifest    string
 	Sudoer      string
+	BinaryPath  string
 	SSH         SSHConfig
 }
 
@@ -80,6 +81,9 @@ func NewDeployHandler(cmd *cobra.Command) *DeployHandler {
 	ageFilePath, err := cmd.Flags().GetString("age-key")
 	utils.CheckErr(err)
 
+	binaryPath, err := cmd.Flags().GetString("binary-path")
+	utils.CheckErr(err)
+
 	sshConfig := SSHConfig{
 		User: sshUser,
 		Key:  &sshKey,
@@ -90,6 +94,7 @@ func NewDeployHandler(cmd *cobra.Command) *DeployHandler {
 		AgeFilePath: ageFilePath,
 		Manifest:    "",
 		Sudoer:      "",
+		BinaryPath:  binaryPath,
 		SSH:         sshConfig,
 	}
 }
@@ -352,6 +357,25 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 			retErr = errors.Join(retErr, fmt.Errorf("error cleaning remote temp directory %s: %s", tmpRemoteDir, cleanupOut))
 		}
 	}()
+
+	// Upload skuld-cli binary to remote host
+	binaryPath := dh.BinaryPath
+	if binaryPath == "" {
+		exePath, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("cannot auto-detect binary path: %w", err)
+		}
+		binaryPath = exePath
+	}
+	remoteBinaryTmpPath := path.Join(tmpRemoteDir, "skuld-cli")
+	utils.LogInfo("Uploading skuld-cli binary", "src", binaryPath, "dst", remoteBinaryTmpPath)
+	if err := client.TransferFile(binaryPath, remoteBinaryTmpPath); err != nil {
+		return fmt.Errorf("uploading binary: %w", err)
+	}
+	stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("mv %s /usr/local/bin/skuld-cli && chmod 755 /usr/local/bin/skuld-cli", utils.ShellQuote(remoteBinaryTmpPath)), nil)
+	if stdErr != nil {
+		return fmt.Errorf("installing binary on remote: %s", string(stdOut))
+	}
 
 	for _, deployFile := range deployFileList {
 		tmpRemoteFilePath := path.Join(tmpRemoteDir, filepath.Base(deployFile.RemoteFilePath))

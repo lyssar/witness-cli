@@ -9,7 +9,9 @@ vars:
   BIN_DIR: '{{.ROOT_DIR}}/.local/bin'
   BIN_PATH: '{{.BIN_DIR}}/{{.APP}}'
   CGO_ENABLED: 0
-  GOFLAGS: -trimpath -ldflags="-s -w"
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+  GOFLAGS: '-trimpath -ldflags="-s -w -X github.com/lyssar/skuld-cli/version.Version={{.VERSION}}"'
   TARGET_DIR: '{{.DIR | default "."}}'
   LOCAL_HARNESS_DIR: '{{default (printf "%s/.local/harness" .ROOT_DIR) .LOCAL_HARNESS_DIR}}'
   LOCAL_COMPOSE_FILE: '{{default (printf "%s/docker/local-harness/compose.yml" .ROOT_DIR) .LOCAL_COMPOSE_FILE}}'
@@ -118,8 +120,8 @@ tasks:
       - rm -rf "{{.LOCAL_HARNESS_DIR}}/ssh" "{{.LOCAL_HARNESS_DIR}}/home"
       - mkdir -p "{{.LOCAL_CONFIG_ROOT}}" "{{.LOCAL_RUNTIME_ROOT}}" "{{.LOCAL_SOURCE_REPO}}/apps/hello" "{{.LOCAL_DESTINATION_ROOT}}"
       - |
-        if [ ! -f "{{.LOCAL_AGE_KEY_PATH}}" ]; then
-          printf '%s\n' 'AGE-SECRET-KEY-1LOCALHARNESSPLACEHOLDER0000000000000000000000000' >"{{.LOCAL_AGE_KEY_PATH}}"
+        if [ ! -f "{{.LOCAL_AGE_KEY_PATH}}" ] || ! age-keygen -y "{{.LOCAL_AGE_KEY_PATH}}" >/dev/null 2>&1; then
+          age-keygen -o "{{.LOCAL_AGE_KEY_PATH}}" >/dev/null 2>&1
           chmod 0600 "{{.LOCAL_AGE_KEY_PATH}}"
         fi
       - |
@@ -143,7 +145,8 @@ tasks:
           >"{{.LOCAL_MANIFEST_PATH}}"
       - |
         rm -rf "{{.LOCAL_SOURCE_REPO}}"
-        mkdir -p "{{.LOCAL_SOURCE_REPO}}/apps/hello"
+        rm -rf "{{.LOCAL_DESTINATION_ROOT}}"
+        mkdir -p "{{.LOCAL_SOURCE_REPO}}/apps/hello" "{{.LOCAL_DESTINATION_ROOT}}/apps/hello"
         printf '%s\n' \
           'apiVersion: skuld.dev/v1alpha1' \
           'kind: Application' \
@@ -159,6 +162,8 @@ tasks:
           '  hello:' \
           '    image: hello-world:latest' \
           >"{{.LOCAL_SOURCE_REPO}}/apps/hello/compose.yaml"
+        cp "{{.LOCAL_SOURCE_REPO}}/apps/hello/skuld.yaml" "{{.LOCAL_DESTINATION_ROOT}}/apps/hello/skuld.yaml"
+        cp "{{.LOCAL_SOURCE_REPO}}/apps/hello/compose.yaml" "{{.LOCAL_DESTINATION_ROOT}}/apps/hello/compose.yaml"
         chmod -R a+rX "{{.LOCAL_SOURCE_REPO}}"
         git -C "{{.LOCAL_SOURCE_REPO}}" init -b main >/dev/null
         git -C "{{.LOCAL_SOURCE_REPO}}" config user.name "local harness"
@@ -178,6 +183,18 @@ tasks:
       LOCAL_HOST_SOURCE_REPO: '{{.LOCAL_SOURCE_REPO}}'
     cmds:
       - docker compose -f {{.LOCAL_COMPOSE_FILE}} run --rm --build target reconcile {{.LOCAL_CONTAINER_RUNTIME_ROOT}}
+    silent: true
+
+  local:smoke:
+    desc: Run the reduced-scope harness and assert repo sync plus no-drift state outputs
+    deps: [local:run]
+    cmds:
+      - test -d "{{.LOCAL_RUNTIME_ROOT}}/repo/.git"
+      - test -f "{{.LOCAL_RUNTIME_ROOT}}/repo/apps/hello/skuld.yaml"
+      - test -f "{{.LOCAL_RUNTIME_ROOT}}/repo/apps/hello/compose.yaml"
+      - test -f "{{.LOCAL_DESTINATION_ROOT}}/apps/hello/skuld.yaml"
+      - test -f "{{.LOCAL_DESTINATION_ROOT}}/apps/hello/compose.yaml"
+      - test -f "{{.LOCAL_RUNTIME_ROOT}}/state.json"
     silent: true
 
   local:status:

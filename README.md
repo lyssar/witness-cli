@@ -12,6 +12,7 @@
 - Build: `task build`
 - Validate: `task validate`
 - Local reconcile harness: `task local:run`
+- Local harness smoke: `task local:smoke`
 
 ## Prepare AGE Key
 
@@ -33,6 +34,7 @@ It uses:
 - a dedicated harness image from `docker/local-harness/Dockerfile`
 - a host-built `skuld-cli` binary mounted read-only into the container
 - a writable runtime root for reconcile output and cloned repo state
+- a preseeded no-drift destination tree so the smoke path can stay honest without simulating real docker runtime apply behavior in-container
 - the prepared manifest and age key mounted read-only
 - a seeded source repo mounted read-only
 
@@ -43,7 +45,15 @@ task local:prepare
 task local:run
 ```
 
-This reduced harness does **not** attempt to simulate SSH, sudo, systemd, or full target-host bootstrap.
+Or run the reduced-scope smoke check end-to-end with:
+
+```bash
+task local:smoke
+```
+
+This reduced harness does **not** attempt to simulate SSH, sudo, systemd, full target-host bootstrap, or real docker-compose apply execution.
+
+CircleCI now runs both `task validate` and `task local:smoke`.
 
 See `docs/local-harness.md` for exact scope and mounted paths.
 
@@ -52,8 +62,13 @@ See `docs/local-harness.md` for exact scope and mounted paths.
 ```bash
 export manifest="my-manifest.yaml"
 export ageKeyFile="my-key.age"
+secret_file="$(mktemp)"
+trap 'rm -f "${secret_file}"' EXIT
+chmod 600 "${secret_file}"
 
-yq -r '.spec.secrets.SECRET_NAME' "${manifest}" | base64 -d | age -d -i "${ageKeyFile}" | tee secret.enc
+secret_source="$(yq -r '.spec.secrets[0].source' "${manifest}")"
+secret_source_path="$(dirname "${manifest}")/${secret_source}"
+base64 -d "${secret_source_path}" | age -d -i "${ageKeyFile}" > "${secret_file}"
 
-nano secret.enc
+nano "${secret_file}"
 ```

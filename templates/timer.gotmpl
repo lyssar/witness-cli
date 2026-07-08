@@ -1,8 +1,12 @@
 {{- define "timer" }}
 [Unit]
-Description=Skuld CLI {{ .Observer.Metadata.Name }} reconsile timer
+Description=Skuld CLI {{ .Observer.Metadata.Name }} reconcile timer
+Documentation=https://github.com/lyssar/skuld-cli
 
 [Timer]
+# The reconciliation interval is derived from spec.timeout.reconciliation.
+# This field is named "timeout" for its role in git operations but doubles
+# as the timer interval between reconcile runs.
 OnBootSec={{ ToSeconds $.Observer.Spec.Timeout.Reconciliation }}
 OnUnitActiveSec={{ ToSeconds $.Observer.Spec.Timeout.Reconciliation }}
 

@@ -5,6 +5,7 @@ import "context"
 // Request describes one decryption unit.
 type Request struct {
 	OperationalID string
+	KeyPath       string
 	SourcePath    string
 	TargetPath    string
 }

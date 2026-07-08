@@ -12,7 +12,7 @@ Human reviews and commits all code. Quality over speed.
 - **Stack:** go
 - **Purpose:** GitOps CLI for bare servers with observer-driven application reconciliation
 - **Downstream Consumers:** no
-- **CI/CD:** none yet / local build-test-doc workflow
+- **CI/CD:** CircleCI runs `task validate` and a reduced-scope local harness smoke path; local build-test-doc workflow remains available
 
 ---
 

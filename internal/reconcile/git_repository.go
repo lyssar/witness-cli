@@ -60,6 +60,14 @@ func (r *gitRepository) Sync(ctx context.Context, targetRevision string) (string
 	return operation, nil
 }
 
+func (r *gitRepository) CurrentCommit(ctx context.Context) (string, error) {
+	resolved, err := r.run(ctx, "rev-parse", "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("resolving HEAD commit: %w", err)
+	}
+	return strings.TrimSpace(resolved), nil
+}
+
 func (r *gitRepository) ensureLocalRepository(ctx context.Context) (string, error) {
 	info, err := os.Stat(r.rootPath)
 	if err != nil {

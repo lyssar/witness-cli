@@ -83,9 +83,9 @@ func (r *RemoteClient) RunSudo(command string, pass string, user *string) ([]byt
 	return out, nil
 }
 
-func (r RemoteClient) TransferFile(srcFile string, dstFile string) {
-	// TODO
-	slog.Debug("Copy file to server with SCP package")
+func (r RemoteClient) TransferFile(srcFile string, dstFile string) error {
+	slog.Debug("Transferring file to remote", "src", srcFile, "dst", dstFile)
+	return r.SSH.Upload(srcFile, dstFile)
 }
 
 func loadSSHConfig() *ssh_config.Config {

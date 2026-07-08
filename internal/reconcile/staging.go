@@ -1,12 +1,14 @@
 package reconcile
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/lyssar/skuld-cli/internal/application"
+	"github.com/lyssar/skuld-cli/internal/decryptor"
 )
 
 // AppStaging holds one app staging tree.
@@ -14,7 +16,7 @@ type AppStaging struct {
 	Root string
 }
 
-func buildAppStaging(app application.DiscoveredApplication, fileset application.FileSet) (AppStaging, func() error, error) {
+func buildAppStaging(ctx context.Context, ageKeyPath string, decryptors map[string]decryptor.Decryptor, app application.DiscoveredApplication, fileset application.FileSet) (AppStaging, func() error, error) {
 	root, err := os.MkdirTemp("", "skuld-stage-*")
 	if err != nil {
 		return AppStaging{}, nil, fmt.Errorf("creating staging root: %w", err)
@@ -39,8 +41,33 @@ func buildAppStaging(app application.DiscoveredApplication, fileset application.
 		}
 	}
 
-	_ = app
+	if err := stageSecrets(ctx, ageKeyPath, decryptors, root, app); err != nil {
+		_ = cleanup()
+		return AppStaging{}, nil, err
+	}
+
 	return AppStaging{Root: root}, cleanup, nil
+}
+
+func stageSecrets(ctx context.Context, ageKeyPath string, decryptors map[string]decryptor.Decryptor, root string, app application.DiscoveredApplication) error {
+	for _, secret := range app.Application.Spec.Secrets {
+		decrypt := decryptors[secret.Decryptor]
+		if decrypt == nil {
+			return fmt.Errorf("decryptor %q is required for app %q", secret.Decryptor, app.OperationalID)
+		}
+		sourcePath := filepath.Join(app.SourceDir, filepath.FromSlash(secret.Source))
+		targetPath := filepath.Join(root, filepath.FromSlash(secret.Target))
+		if err := decrypt.DecryptFile(ctx, decryptor.Request{
+			OperationalID: app.OperationalID,
+			KeyPath:       ageKeyPath,
+			SourcePath:    sourcePath,
+			TargetPath:    targetPath,
+		}); err != nil {
+			return fmt.Errorf("decrypting secret %q to %q: %w", secret.Source, secret.Target, err)
+		}
+	}
+
+	return nil
 }
 
 func copyFileWithMode(sourcePath, destinationPath string) error {

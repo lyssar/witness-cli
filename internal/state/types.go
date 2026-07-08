@@ -2,6 +2,11 @@ package state
 
 import "time"
 
+const (
+	// CurrentVersion is the current on-disk state schema version.
+	CurrentVersion = 1
+)
+
 // Status represents the persisted reconcile status for one application.
 type Status string
 
@@ -21,6 +26,12 @@ type Entry struct {
 	LastAttemptedReconcileAt     *time.Time `json:"lastAttemptedReconcileAt,omitempty"`
 	LastSuccessfulReconcileAt    *time.Time `json:"lastSuccessfulReconcileAt,omitempty"`
 	LastSuccessfulResolvedCommit string     `json:"lastSuccessfulResolvedCommit,omitempty"`
+	RuntimeSlug                  string     `json:"runtimeSlug,omitempty"`
+	ApplicationName              string     `json:"applicationName,omitempty"`
+	Provisioner                  string     `json:"provisioner,omitempty"`
+	ComposeFiles                 []string   `json:"composeFiles,omitempty"`
+	SecretTargets                []string   `json:"secretTargets,omitempty"`
+	ArchivePath                  string     `json:"archivePath,omitempty"`
 }
 
 // File is the aggregate observer-local state file.

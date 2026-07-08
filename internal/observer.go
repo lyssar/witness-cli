@@ -3,11 +3,13 @@ package internal
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"filippo.io/age"
 	"github.com/charmbracelet/huh"
 	"github.com/creasty/defaults"
 	"github.com/lyssar/skuld-cli/templates"
@@ -291,4 +293,68 @@ func (observer *Observer) WriteConfig() {
 	utils.CheckErr(err)
 	err = f.Sync()
 	utils.CheckErr(err)
+}
+
+func (observer *Observer) WriteConfigRoot() error {
+	projectName := strings.ToLower(observer.Spec.Project)
+	if projectName == "" {
+		return fmt.Errorf("observer project name must not be empty")
+	}
+
+	userConfigDir, err := os.UserConfigDir()
+	if err != nil {
+		return fmt.Errorf("getting user config dir: %w", err)
+	}
+
+	configRoot := filepath.Join(userConfigDir, utils.APP_NAME, projectName)
+
+	if err := os.MkdirAll(configRoot, 0700); err != nil {
+		return fmt.Errorf("creating config root directory %s: %w", configRoot, err)
+	}
+
+	identity, err := age.GenerateX25519Identity()
+	if err != nil {
+		return fmt.Errorf("generating age identity: %w", err)
+	}
+
+	ageKeyPath := filepath.Join(configRoot, "age.key")
+	ageKeyContent := fmt.Sprintf("# created: %s\n# public key: %s\n%s\n",
+		time.Now().Format(time.RFC3339),
+		identity.Recipient().String(),
+		identity.String())
+
+	if err := os.WriteFile(ageKeyPath, []byte(ageKeyContent), 0600); err != nil {
+		return fmt.Errorf("writing age key %s: %w", ageKeyPath, err)
+	}
+
+	observer.AgeKeyFile = ageKeyPath
+
+	renderer, err := templates.NewRenderer()
+	if err != nil {
+		return fmt.Errorf("creating template renderer: %w", err)
+	}
+
+	manifestPath := filepath.Join(configRoot, "manifest.yaml")
+	f, err := os.Create(manifestPath)
+	if err != nil {
+		return fmt.Errorf("creating manifest file %s: %w", manifestPath, err)
+	}
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("closing manifest file: %w", cerr)
+		}
+	}()
+
+	if err := renderer.Render("observer", observer, f); err != nil {
+		return fmt.Errorf("rendering manifest: %w", err)
+	}
+
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("syncing manifest: %w", err)
+	}
+
+	utils.LogSuccess("Observer config root created", "path", configRoot)
+	slog.Info(fmt.Sprintf("Run: skuldcli reconcile %s", configRoot))
+
+	return nil
 }
