@@ -34,47 +34,58 @@ a { color: #e53935; text-decoration: none; transition: color 0.2s; }
 a:hover { color: #ff6f6f; }
 a:visited { color: #c62828; }
 
-/* ── Header ── */
+/* ── Header / Hero Banner ── */
 .nod-header {
   background: linear-gradient(180deg, #1a0000 0%, #0d0000 100%);
   border-bottom: 2px solid #cc0000;
-  padding: 0 0 0 0;
+  padding: 0;
 }
 
-.logo-link {
+.logo-hero {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 1.2rem;
-  padding: 1.5rem 0;
+  justify-content: center;
+  padding: 3rem 1.5rem 1.5rem;
   text-decoration: none !important;
+  cursor: pointer;
 }
 
-.logo {
-  width: 64px;
-  height: 64px;
+.hero-logo {
+  width: 140px;
+  height: 140px;
   image-rendering: auto;
+  margin-bottom: 0.75rem;
+  filter: drop-shadow(0 0 25px rgba(204,0,0,0.25));
+  transition: filter 0.3s;
 }
 
-.title-block { display: flex; flex-direction: column; }
+.logo-hero:hover .hero-logo {
+  filter: drop-shadow(0 0 35px rgba(204,0,0,0.45));
+}
 
-.site-title {
+.hero-title-block {
+  text-align: center;
+}
+
+.hero-title {
   font-family: 'Share Tech Mono', monospace;
-  font-size: 2rem;
-  font-weight: 700;
+  font-size: 1.4rem;
+  font-weight: 400;
   color: #cc0000;
   text-transform: uppercase;
-  letter-spacing: 0.15em;
-  text-shadow: 0 0 20px rgba(204,0,0,0.3);
+  letter-spacing: 0.4em;
+  text-shadow: 0 0 30px rgba(204,0,0,0.3);
   margin: 0;
   line-height: 1.2;
 }
 
-.site-subtitle {
+.hero-subtitle {
   font-family: 'Share Tech Mono', monospace;
-  font-size: 0.85rem;
-  color: #884;
-  letter-spacing: 0.1em;
-  margin: 0;
+  font-size: 0.8rem;
+  color: #664;
+  letter-spacing: 0.15em;
+  margin: 0.3rem 0 0;
 }
 
 /* ── Navigation ── */
@@ -320,13 +331,19 @@ a:visited { color: #c62828; }
 
 /* ── Responsive ── */
 @media (max-width: 640px) {
-  .logo-link {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
+  .hero-logo {
+    width: 100px;
+    height: 100px;
   }
 
-  .site-title { font-size: 1.5rem; }
+  .logo-hero {
+    padding: 2rem 1rem 1rem;
+  }
+
+  .hero-title {
+    font-size: 1.1rem;
+    letter-spacing: 0.3em;
+  }
 
   .nod-nav .container { gap: 0; }
   .nod-nav a {
