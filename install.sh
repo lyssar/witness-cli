@@ -19,13 +19,21 @@ set -eu
 # ──────────────────────────────────────────────
 
 # --- Auth helpers for private repos ---
-# sfSL = silent + show errors + fail on HTTP error + follow redirects
-_AUTH_CURL="curl -sfSL"
-_AUTH_WGET="wget -qO-"
-if [ -n "${GITHUB_TOKEN:-}" ]; then
-  _AUTH_CURL="curl -sfSL -H \"Authorization: token ${GITHUB_TOKEN}\""
-  _AUTH_WGET="wget -qO- --header=\"Authorization: token ${GITHUB_TOKEN}\""
-fi
+# Use functions instead of eval to avoid quoting issues with the token header.
+_download() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    curl -sfSL -H "Authorization: token ${GITHUB_TOKEN}" "$@"
+  else
+    curl -sfSL "$@"
+  fi
+}
+_download_stdout() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    curl -sfSL -H "Authorization: token ${GITHUB_TOKEN}" "$@"
+  else
+    curl -sfSL "$@"
+  fi
+}
 
 REPO="lyssar/witness-cli"
 BIN_NAME="witness"
@@ -95,12 +103,12 @@ check_prereqs() {
 # --- Get Latest Release ---
 get_latest_version() {
   if command -v curl >/dev/null 2>&1; then
-    eval "${_AUTH_CURL}" "https://api.github.com/repos/${REPO}/releases/latest" \
+    _download_stdout "https://api.github.com/repos/${REPO}/releases/latest" \
       | grep '"tag_name":' \
       | sed -E 's/.*"([^"]+)".*/\1/' \
       || echo ""
   elif command -v wget >/dev/null 2>&1; then
-    eval "${_AUTH_WGET}" "https://api.github.com/repos/${REPO}/releases/latest" \
+    wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" \
       | grep '"tag_name":' \
       | sed -E 's/.*"([^"]+)".*/\1/' \
       || echo ""
@@ -125,16 +133,16 @@ download_binary() {
   local archive_path="${tmpdir}/${archive_name}"
 
   if command -v curl >/dev/null 2>&1; then
-    eval "${_AUTH_CURL}" -o "${archive_path}" "${download_url}" || true
+    _download -o "${archive_path}" "${download_url}" || true
   elif command -v wget >/dev/null 2>&1; then
-    eval "${_AUTH_WGET}" -O "${archive_path}" "${download_url}" || true
+    wget -qO "${archive_path}" "${download_url}" || true
   fi
 
   if [ ! -f "${archive_path}" ] || [ ! -s "${archive_path}" ]; then
     rm -rf "${tmpdir}"
     err "download failed: ${download_url}
-  Check your internet connection and ensure the release asset exists.
-  For private repos, verify GITHUB_TOKEN is set and has access."
+  For private repos: verify GITHUB_TOKEN is set, not expired, and has 'repo' scope.
+  For public repos: ensure the release asset exists with this exact name."
   fi
 
   tar -xzf "${archive_path}" -C "${tmpdir}" "${BIN_NAME}" 2>/dev/null || {
