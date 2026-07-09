@@ -253,14 +253,46 @@ check_prereqs
 
 header "Fetching latest release..."
 VERSION="$(get_latest_version)"
-if [ -z "${VERSION}" ]; then
-  err "could not determine latest release. Check your internet connection."
+
+if [ -n "${VERSION}" ]; then
+  info "latest version: ${VERSION}"
+else
+  warn "no GitHub release found for ${REPO}"
+  VERSION="dev"
 fi
-info "latest version: ${VERSION}"
 
 header "Installing ${BIN_NAME} ${VERSION} ..."
-${_SUDO} mkdir -p "${INSTALL_DIR}"
-download_binary "${PLATFORM}" "${VERSION}" "${INSTALL_DIR}"
+
+case "${VERSION}" in
+  dev)
+    # Build from source via git clone + go build
+    if ! command -v go >/dev/null 2>&1; then
+      err "no release found and go is not installed.
+  Create a GitHub release first, or install Go and re-run."
+    fi
+    info "building from source (this may take a moment)..."
+    BUILD_DIR="$(mktemp -d)"
+    git clone --depth 1 "https://github.com/${REPO}.git" "${BUILD_DIR}" 2>/dev/null || {
+      rm -rf "${BUILD_DIR}"
+      err "git clone failed. For private repos, configure git credentials first:
+  - SSH key in ~/.ssh, or
+  - git config --global credential.helper store, or
+  - GIT_ASKPASS / GIT_TOKEN env var"
+    }
+    (cd "${BUILD_DIR}" && go build -o "${BIN_NAME}" .) || {
+      rm -rf "${BUILD_DIR}"
+      err "go build failed. Check the build log above."
+    }
+    ${_SUDO} install -m 755 "${BUILD_DIR}/${BIN_NAME}" "${INSTALL_DIR}/${BIN_NAME}"
+    rm -rf "${BUILD_DIR}"
+    info "binary installed to ${INSTALL_DIR}/${BIN_NAME}"
+    ;;
+  *)
+    # Download pre-built binary from GitHub Releases
+    ${_SUDO} mkdir -p "${INSTALL_DIR}"
+    download_binary "${PLATFORM}" "${VERSION}" "${INSTALL_DIR}"
+    ;;
+esac
 
 # Create witness system user (system-wide install only)
 if [ "${USER_INSTALL}" != "true" ]; then
