@@ -132,12 +132,14 @@ download_binary() {
   release_json=""
   release_json="$(_download_stdout "https://api.github.com/repos/${REPO}/releases/tags/${version}")" || true
 
-  # Extract asset ID for the matching archive name from the JSON response.
+  # Extract asset ID from the "url" field preceding the matching archive name.
+  # Using /assets/NUMBER from "url" is more reliable than "id" (which can be
+  # the uploader's user ID in nearby lines).
   local asset_id
   asset_id="$(echo "${release_json}" \
-    | grep -A 5 "\"name\": *\"${archive_name}\"" \
-    | grep '"id"' \
-    | sed 's/.*"id": *\([0-9]*\).*/\1/')"
+    | grep -B 3 "\"name\": *\"${archive_name}\"" \
+    | grep -o '/assets/[0-9]*' \
+    | sed 's|/assets/||')"
 
   if [ -z "${asset_id}" ]; then
     err "asset '${archive_name}' not found in release ${version}.
