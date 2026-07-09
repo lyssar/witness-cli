@@ -124,25 +124,46 @@ download_binary() {
   local dest_dir="$3"
 
   local archive_name="${BIN_NAME}_${version#v}_${platform}.tar.gz"
-  local download_url="https://github.com/${REPO}/releases/download/${version}/${archive_name}"
 
-  info "downloading ${archive_name} ..."
+  # Resolve asset ID via the releases API (works for public and private repos
+  # with both classic and fine-grained PATs — unlike the browser download URL).
+  info "resolving ${archive_name} ..."
+  local release_json
+  release_json=""
+  release_json="$(_download_stdout "https://api.github.com/repos/${REPO}/releases/tags/${version}")" || true
+
+  # Extract asset ID for the matching archive name from the JSON response.
+  local asset_id
+  asset_id="$(echo "${release_json}" \
+    | grep -A 5 "\"name\": *\"${archive_name}\"" \
+    | grep '"id"' \
+    | sed 's/.*"id": *\([0-9]*\).*/\1/')"
+
+  if [ -z "${asset_id}" ]; then
+    err "asset '${archive_name}' not found in release ${version}.
+  Ensure the release has the correct asset name."
+  fi
+
+  info "downloading ${archive_name} (asset #${asset_id}) ..."
 
   local tmpdir
   tmpdir="$(mktemp -d)"
   local archive_path="${tmpdir}/${archive_name}"
 
   if command -v curl >/dev/null 2>&1; then
-    _download -o "${archive_path}" "${download_url}" || true
+    _download -H "Accept: application/octet-stream" \
+      -o "${archive_path}" \
+      "https://api.github.com/repos/${REPO}/releases/assets/${asset_id}" || true
   elif command -v wget >/dev/null 2>&1; then
-    wget -qO "${archive_path}" "${download_url}" || true
+    wget -qO "${archive_path}" \
+      "https://api.github.com/repos/${REPO}/releases/assets/${asset_id}" || true
   fi
 
   if [ ! -f "${archive_path}" ] || [ ! -s "${archive_path}" ]; then
     rm -rf "${tmpdir}"
-    err "download failed: ${download_url}
-  For private repos: verify GITHUB_TOKEN is set, not expired, and has 'repo' scope.
-  For public repos: ensure the release asset exists with this exact name."
+    err "download failed (asset #${asset_id}).
+  For private repos: ensure your GITHUB_TOKEN has 'contents: read' permission.
+  For public repos: ensure the release asset exists."
   fi
 
   tar -xzf "${archive_path}" -C "${tmpdir}" "${BIN_NAME}" 2>/dev/null || {
