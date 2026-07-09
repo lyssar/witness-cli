@@ -28,7 +28,7 @@ type GitSource struct {
 
 type Metadata struct {
 	Name string `yaml:"name"`
-	User string `yaml:"user"`
+	User string `default:"witness" yaml:"user"`
 }
 
 type Timeout struct {

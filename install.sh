@@ -1,27 +1,52 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -eu
 
 # ──────────────────────────────────────────────
 #  Witness — install.sh
 #  Download and install the latest witness binary
-#  USAGE: curl -sfL https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh | sh
+#
+#  System-wide (default, uses sudo):
+#    curl -sfL https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh | sh
+#
+#  User-local (no sudo):
+#    curl -sfL https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh | sh -s -- --user
+#
+#  Private repo (set GITHUB_TOKEN):
+#    export GITHUB_TOKEN=ghp_xxx
+#    curl -sfL -H "Authorization: token $GITHUB_TOKEN" \
+#      https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh \
+#      | GITHUB_TOKEN=$GITHUB_TOKEN sh
 # ──────────────────────────────────────────────
+
+# --- Auth helpers for private repos ---
+_AUTH_CURL="curl -sfL"
+_AUTH_WGET="wget -qO-"
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  _AUTH_CURL="curl -sfL -H \"Authorization: token ${GITHUB_TOKEN}\""
+  _AUTH_WGET="wget -qO- --header=\"Authorization: token ${GITHUB_TOKEN}\""
+fi
 
 REPO="lyssar/witness-cli"
 BIN_NAME="witness"
-DEFAULT_INSTALL_DIR="${HOME}/.local/bin"
+WITNESS_USER="witness"
 
 # --- Colors ---
 BOLD='\033[1m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 info()  { printf "${GREEN}✓${NC} %s\n" "$*"; }
 warn()  { printf "${YELLOW}⚠${NC} %s\n" "$*"; }
 err()   { printf "${RED}✗${NC} %s\n" "$*"; exit 1; }
 header(){ printf "\n${BOLD}%s${NC}\n" "$*"; }
+
+# --- Sudo helper ---
+_SUDO=""
+if [ "$(id -u)" -ne 0 ]; then
+  _SUDO="sudo"
+fi
 
 # --- Detect OS and Architecture ---
 detect_platform() {
@@ -46,17 +71,17 @@ detect_platform() {
 check_prereqs() {
   local missing=0
 
-  if ! command -v git &>/dev/null; then
+  if ! command -v git >/dev/null 2>&1; then
     warn "git is not installed. Install it first: https://git-scm.com/"
     missing=1
   fi
 
-  if ! command -v age-keygen &>/dev/null; then
+  if ! command -v age-keygen >/dev/null 2>&1; then
     warn "age is not installed. Install it first: https://github.com/FiloSottile/age#installation"
     missing=1
   fi
 
-  if ! command -v docker &>/dev/null; then
+  if ! command -v docker >/dev/null 2>&1; then
     warn "docker is not installed. Needed for the docker-compose provisioner."
     warn "Install it first: https://docs.docker.com/engine/install/"
   fi
@@ -68,13 +93,13 @@ check_prereqs() {
 
 # --- Get Latest Release ---
 get_latest_version() {
-  if command -v curl &>/dev/null; then
-    curl -sfL "https://api.github.com/repos/${REPO}/releases/latest" \
+  if command -v curl >/dev/null 2>&1; then
+    eval "${_AUTH_CURL}" "https://api.github.com/repos/${REPO}/releases/latest" \
       | grep '"tag_name":' \
       | sed -E 's/.*"([^"]+)".*/\1/' \
       || echo ""
-  elif command -v wget &>/dev/null; then
-    wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" \
+  elif command -v wget >/dev/null 2>&1; then
+    eval "${_AUTH_WGET}" "https://api.github.com/repos/${REPO}/releases/latest" \
       | grep '"tag_name":' \
       | sed -E 's/.*"([^"]+)".*/\1/' \
       || echo ""
@@ -98,10 +123,10 @@ download_binary() {
   tmpdir="$(mktemp -d)"
   local archive_path="${tmpdir}/${archive_name}"
 
-  if command -v curl &>/dev/null; then
-    curl -sfL "${download_url}" -o "${archive_path}"
-  elif command -v wget &>/dev/null; then
-    wget -qO "${archive_path}" "${download_url}"
+  if command -v curl >/dev/null 2>&1; then
+    eval "${_AUTH_CURL}" -o "${archive_path}" "${download_url}"
+  elif command -v wget >/dev/null 2>&1; then
+    eval "${_AUTH_WGET}" -O "${archive_path}" "${download_url}"
   fi
 
   if [ ! -f "${archive_path}" ]; then
@@ -121,29 +146,49 @@ download_binary() {
   fi
 
   chmod 755 "${binary_src}"
-  mv "${binary_src}" "${dest_dir}/${BIN_NAME}"
+
+  # Install — system-wide via sudo or direct
+  ${_SUDO} install -m 755 "${binary_src}" "${dest_dir}/${BIN_NAME}"
   rm -rf "${tmpdir}"
 
   info "binary installed to ${dest_dir}/${BIN_NAME}"
 }
 
-# --- Ensure Install Directory is in PATH ---
-ensure_path() {
-  local install_dir="$1"
-
-  # Already in PATH?
-  if command -v "${BIN_NAME}" &>/dev/null; then
+# --- Create witness system user (Linux only) ---
+create_witness_user() {
+  if id -u "${WITNESS_USER}" >/dev/null 2>&1; then
+    info "witness system user already exists"
     return 0
   fi
 
-  # Detect shell rc
+  case "$(uname -s)" in
+    Linux)
+      ${_SUDO} useradd --system --create-home \
+        --shell /usr/sbin/nologin \
+        "${WITNESS_USER}"
+      info "created witness system user (home: /home/witness)"
+      ;;
+    Darwin)
+      warn "skipping witness system user creation (unsupported on macOS)"
+      warn "create it manually: sudo sysadminctl -addUser witness"
+      ;;
+  esac
+}
+
+# --- Ensure Install Directory is in PATH (user-local only) ---
+ensure_path() {
+  local install_dir="$1"
+
+  if command -v "${BIN_NAME}" >/dev/null 2>&1; then
+    return 0
+  fi
+
   local rc_file=""
   case "${SHELL}" in
     */zsh) rc_file="${HOME}/.zshrc" ;;
     */bash) rc_file="${HOME}/.bashrc" ;;
   esac
 
-  # Add to PATH if rc file exists
   if [ -n "${rc_file}" ] && [ -f "${rc_file}" ]; then
     local path_line="export PATH=\"\${PATH}:${install_dir}\""
     if ! grep -qF "${install_dir}" "${rc_file}" 2>/dev/null; then
@@ -162,19 +207,43 @@ header "Witness — Installer"
 echo ""
 
 # Parse arguments
-INSTALL_DIR="${DEFAULT_INSTALL_DIR}"
+USER_INSTALL=false
+INSTALL_DIR=""
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --dir) INSTALL_DIR="$2"; shift 2 ;;
+    --user)
+      USER_INSTALL=true
+      shift
+      ;;
+    --dir)
+      INSTALL_DIR="$2"
+      shift 2
+      ;;
     --help|-h)
-      echo "Usage: install.sh [--dir <path>]"
+      echo "Usage: install.sh [options]"
       echo ""
-      echo "  --dir <path>   Install directory (default: ~/.local/bin)"
+      echo "Options:"
+      echo "  --dir <path>    Install directory"
+      echo "                  (default: /usr/local/bin, or ~/.local/bin with --user)"
+      echo "  --user          User-local install (no sudo, no system user)"
+      echo "  --help, -h      Show this help"
+      echo ""
+      echo "Examples:"
+      echo "  curl -sfL https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh | sh"
+      echo "  curl -sfL https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh | sh -s -- --user"
       exit 0
       ;;
     *) err "unknown argument: $1 (use --help for usage)" ;;
   esac
 done
+
+# Set defaults
+if [ "${USER_INSTALL}" = "true" ]; then
+  INSTALL_DIR="${INSTALL_DIR:-${HOME}/.local/bin}"
+else
+  INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+fi
 
 PLATFORM="$(detect_platform)"
 info "detected platform: ${PLATFORM}"
@@ -190,13 +259,22 @@ fi
 info "latest version: ${VERSION}"
 
 header "Installing ${BIN_NAME} ${VERSION} ..."
-mkdir -p "${INSTALL_DIR}"
+${_SUDO} mkdir -p "${INSTALL_DIR}"
 download_binary "${PLATFORM}" "${VERSION}" "${INSTALL_DIR}"
 
-ensure_path "${INSTALL_DIR}"
+# Create witness system user (system-wide install only)
+if [ "${USER_INSTALL}" != "true" ]; then
+  header "Setting up witness system user..."
+  create_witness_user
+fi
+
+# PATH setup (user-local only)
+if [ "${USER_INSTALL}" = "true" ]; then
+  ensure_path "${INSTALL_DIR}"
+fi
 
 header "Verifying installation..."
-if command -v "${BIN_NAME}" &>/dev/null; then
+if command -v "${BIN_NAME}" >/dev/null 2>&1; then
   "${BIN_NAME}" version
   echo ""
   info "${BIN_NAME} ${VERSION} installed successfully!"
@@ -206,9 +284,16 @@ else
 fi
 
 header "Next steps"
-echo "  1. Create an observer:     ${BIN_NAME} init my-server --local"
-echo "  2. Create an application:  ${BIN_NAME} new-app"
-echo "  3. Run reconciliation:     ${BIN_NAME} reconcile ~/.config/witness/my-server/"
+echo "  1. Create an observer:          ${BIN_NAME} init my-server --local"
+echo "  2. Deploy to target host:       ${BIN_NAME} deploy manifest.yaml --host <server>"
+if [ "${USER_INSTALL}" != "true" ]; then
+  echo "  3. System user '${WITNESS_USER}' created — use it in your observer manifest:"
+  echo "       metadata:"
+  echo "         name: my-server"
+  echo "         user: ${WITNESS_USER}"
+fi
 echo ""
 echo "  📖 Full documentation: https://lyssar.github.io/witness-cli/"
 echo ""
+
+# vim: ts=2 sw=2 et
