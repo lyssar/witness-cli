@@ -276,6 +276,10 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 
 	dh.runSudo(client, fmt.Sprintf("chown -R %s:%[1]s %s %s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir), utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
 
+	// Pre-install GitHub host key — witness user needs it for git clone
+	utils.LogInfo("Installing GitHub host key")
+	dh.runSudo(client, fmt.Sprintf("mkdir -p /home/%s/.ssh && ssh-keyscan github.com >> /home/%s/.ssh/known_hosts && chown -R %s:%s /home/%s/.ssh", observer.Metadata.User, observer.Metadata.User, observer.Metadata.User, observer.Metadata.User, observer.Metadata.User), nil)
+
 	renderer, err := templates.NewRenderer()
 	if err != nil {
 		return err
