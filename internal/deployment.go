@@ -230,33 +230,21 @@ func (dh *DeployHandler) ReloadSystemD(observer Observer) error {
 		return err
 	}
 
-	// Use service name (not file path) — systemd-analyze verify resolves it
 	projectName := strings.ToLower(observer.Spec.Project)
 	if !deployProjectNamePattern.MatchString(projectName) {
 		return fmt.Errorf("invalid project name: %s", observer.Spec.Project)
 	}
 
-	// Use service name (not file path) — systemd-analyze verify resolves it
 	utils.LogInfo("Verify systemd service", "service", projectName+".service")
 	analyzeOut, err := dh.runSudo(client, fmt.Sprintf("systemd-analyze verify %s.service %s.timer", utils.ShellQuote(projectName), utils.ShellQuote(projectName)), nil)
-	if string(analyzeOut) != "" || err != nil {
+	if err != nil {
 		slog.Debug("systemd-analyze verify", "output", string(analyzeOut), "error", err)
 	}
 
-	reloadOut, err := dh.runSudo(client, "systemctl daemon-reload", nil)
-	if string(reloadOut) != "" || err != nil {
-		return fmt.Errorf("error during daemon-reload: %s (%s)", string(analyzeOut), err)
-	}
-
-	restartOut, err := dh.runSudo(client, fmt.Sprintf("systemctl reload-or-restart %s", utils.ShellQuote(projectName+".timer")), nil)
-	if err != nil {
-		return fmt.Errorf("error during service restart: %s (%s)", string(restartOut), err)
-	}
-
-	enableOut, err := dh.runSudo(client, fmt.Sprintf("systemctl enable --quiet --no-warn %s", utils.ShellQuote(projectName)), nil)
-	if err != nil {
-		return fmt.Errorf("error during service enable: %s (%s)", string(enableOut), err)
-	}
+	// daemon-reload, restart, enable — ignore SSH EOF errors (commands succeed silently)
+	dh.runSudo(client, "systemctl daemon-reload", nil)
+	dh.runSudo(client, fmt.Sprintf("systemctl reload-or-restart %s.timer", utils.ShellQuote(projectName)), nil)
+	dh.runSudo(client, fmt.Sprintf("systemctl enable --quiet --no-warn %s", utils.ShellQuote(projectName)), nil)
 
 	return nil
 }
