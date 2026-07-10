@@ -73,10 +73,13 @@ func (r *RemoteClient) RunSudo(command string, pass string, user *string) ([]byt
 	}
 	out, runErr := sess.CombinedOutput(remoteCmd)
 	closeErr := sess.Close()
+
+	// SSH sessions often return EOF on close even when the command succeeded.
+	// If the command itself returned output and no command error, treat close errors as non-fatal.
 	if runErr != nil {
 		return out, runErr
 	}
-	if closeErr != nil {
+	if closeErr != nil && len(out) == 0 {
 		return out, closeErr
 	}
 
