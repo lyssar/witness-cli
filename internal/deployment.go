@@ -203,12 +203,13 @@ func (dh *DeployHandler) Validate() error {
 
 	// witness binary is uploaded and installed by DeployToHost — no pre-check needed
 
-	// Check age as root (not execution user) since we just need to verify it's installed
-	stdOut, stdErr = dh.runSudo(remoteClient, "command -v age", nil)
-
-	if stdErr != nil {
-		return fmt.Errorf("age not on target host found %s. (error %s)", string(stdOut), stdErr)
+	// Check age is installed — output contains path if found, ignore SSH session EOF errors
+	stdOut, _ = dh.runSudo(remoteClient, "command -v age", nil)
+	agePath := strings.TrimSpace(string(stdOut))
+	if agePath == "" || strings.Contains(agePath, "not found") {
+		return fmt.Errorf("age not installed on target host — install it first: https://github.com/FiloSottile/age#installation")
 	}
+	slog.Debug("age found on target", "path", agePath)
 
 	utils.LogInfo("Validating deployment")
 
