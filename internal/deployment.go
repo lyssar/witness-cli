@@ -203,7 +203,8 @@ func (dh *DeployHandler) Validate() error {
 
 	// witness binary is uploaded and installed by DeployToHost — no pre-check needed
 
-	stdOut, stdErr = dh.runSudo(remoteClient, "command -v age", &observer.Metadata.User)
+	// Check age as root (not execution user) since we just need to verify it's installed
+	stdOut, stdErr = dh.runSudo(remoteClient, "command -v age", nil)
 
 	if stdErr != nil {
 		return fmt.Errorf("age not on target host found %s. (error %s)", string(stdOut), stdErr)
