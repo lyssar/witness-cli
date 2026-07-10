@@ -181,16 +181,18 @@ func (dh *DeployHandler) Validate() error {
 
 	serviceName := strings.ToLower(observer.Metadata.Name)
 	stdOut, stdErr = dh.runSudo(remoteClient, fmt.Sprintf("S=%s.service; T=${S%%.service}.timer; systemctl show -p LoadState --value \"$T\"", utils.ShellQuote(serviceName)), nil)
-	if stdErr != nil {
-		return fmt.Errorf("checkup failed: %s (%s)", string(stdOut), stdErr)
-	}
 
-	slog.Debug(string(stdOut))
+	serviceState := strings.TrimSpace(string(stdOut))
+	slog.Debug("service state", "service", serviceName, "state", serviceState)
 
-	if strings.TrimSpace(string(stdOut)) != "not-found" {
+	// "not-found" means the timer doesn't exist yet — this is expected on first deploy
+	if serviceState != "not-found" {
+		if stdErr != nil {
+			return fmt.Errorf("checkup failed: %s (%s)", string(stdOut), stdErr)
+		}
 		overrideIt := false
 		err := huh.NewConfirm().
-			Title(fmt.Sprintf("Service already present, override it? (%s)", string(stdOut))).Value(&overrideIt).Run()
+			Title(fmt.Sprintf("Service already present, override it? (%s)", serviceState)).Value(&overrideIt).Run()
 		if err != nil {
 			return fmt.Errorf("prompting for service override: %w", err)
 		}
