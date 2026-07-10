@@ -345,15 +345,12 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 	if err != nil {
 		return err
 	}
-	dh.runSudo(client, fmt.Sprintf("mkdir -p %s && chmod 700 %s", utils.ShellQuote(tmpRemoteDir), utils.ShellQuote(tmpRemoteDir)), nil)
-
-	// Verify temp dir exists
-	tmpDirCheck, _ := dh.runSudo(client, fmt.Sprintf("test -d %s && echo ok", utils.ShellQuote(tmpRemoteDir)), nil)
-	if strings.TrimSpace(string(tmpDirCheck)) != "ok" {
-		return fmt.Errorf("failed to create temp directory %s", tmpRemoteDir)
+	// Create temp dir without sudo — SFTP upload runs as SSH user
+	if _, err := client.SSH.Run("mkdir -p " + utils.ShellQuote(tmpRemoteDir)); err != nil {
+		return fmt.Errorf("creating temp directory: %w", err)
 	}
 	defer func() {
-		dh.runSudo(client, fmt.Sprintf("rm -rf %s", utils.ShellQuote(tmpRemoteDir)), nil)
+		client.SSH.Run("rm -rf " + utils.ShellQuote(tmpRemoteDir))
 	}()
 
 	// Upload witness binary to remote host
