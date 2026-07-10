@@ -276,19 +276,17 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 	remoteAgeFilePath := fmt.Sprintf("%s/%s/age.key", observerUserHomeConfigDir, strings.ToLower(observer.Spec.Project))
 	remoteManifestPath := fmt.Sprintf("%s/%s/manifest.yaml", observerUserHomeConfigDir, strings.ToLower(observer.Spec.Project))
 	utils.LogInfo("Creating destination for user")
-	stdOut, stdErr := dh.runSudo(client, fmt.Sprintf("mkdir -p %s %s", utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
+	dh.runSudo(client, fmt.Sprintf("mkdir -p %s %s", utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
 
-	if stdErr != nil {
-		return fmt.Errorf("error while destination folder: %s", stdOut)
+	// Verify directory was created (ignore SSH session EOF errors)
+	verifyOut, _ := dh.runSudo(client, fmt.Sprintf("test -d %s && echo ok", utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
+	if strings.TrimSpace(string(verifyOut)) != "ok" {
+		return fmt.Errorf("failed to create config directory %s", filepath.Dir(remoteManifestPath))
 	}
 
 	utils.LogInfo("Change owner")
 
-	stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir), utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
-
-	if stdErr != nil {
-		return fmt.Errorf("error while changing folder: %s", stdOut)
-	}
+	dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir), utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
 
 	renderer, err := templates.NewRenderer()
 	if err != nil {
@@ -347,7 +345,7 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 	if err != nil {
 		return err
 	}
-	stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("mkdir %s && chmod 700 %s", utils.ShellQuote(tmpRemoteDir), utils.ShellQuote(tmpRemoteDir)), nil)
+	stdOut, stdErr := dh.runSudo(client, fmt.Sprintf("mkdir %s && chmod 700 %s", utils.ShellQuote(tmpRemoteDir), utils.ShellQuote(tmpRemoteDir)), nil)
 	if stdErr != nil {
 		return fmt.Errorf("error while creating temp directory: %s", stdOut)
 	}
