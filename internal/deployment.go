@@ -274,7 +274,7 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 
 	utils.LogInfo("Change owner")
 
-	dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir), utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
+	dh.runSudo(client, fmt.Sprintf("chown -R %s:%[1]s %s %s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir), utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
 
 	renderer, err := templates.NewRenderer()
 	if err != nil {
@@ -288,7 +288,7 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 
 	templateData := map[string]any{
 		"Observer":           observer,
-		"ObserverConfigPath": observerUserHomeConfigDir,
+		"ObserverConfigPath": filepath.Join(observerUserHomeConfigDir, strings.ToLower(observer.Spec.Project)),
 		"AgeFile":            remoteAgeFilePath,
 	}
 
@@ -401,6 +401,9 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 
 		dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s", utils.ShellQuote(deployFile.RemoteFileOwner), utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 	}
+
+	// Final recursive chown — mv via sudo creates root-owned dirs
+	dh.runSudo(client, fmt.Sprintf("chown -R %s:%[1]s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir)), nil)
 
 	return nil
 }
