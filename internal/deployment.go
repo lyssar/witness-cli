@@ -345,15 +345,15 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 	if err != nil {
 		return err
 	}
-	stdOut, stdErr := dh.runSudo(client, fmt.Sprintf("mkdir %s && chmod 700 %s", utils.ShellQuote(tmpRemoteDir), utils.ShellQuote(tmpRemoteDir)), nil)
-	if stdErr != nil {
-		return fmt.Errorf("error while creating temp directory: %s", stdOut)
+	dh.runSudo(client, fmt.Sprintf("mkdir -p %s && chmod 700 %s", utils.ShellQuote(tmpRemoteDir), utils.ShellQuote(tmpRemoteDir)), nil)
+
+	// Verify temp dir exists
+	tmpDirCheck, _ := dh.runSudo(client, fmt.Sprintf("test -d %s && echo ok", utils.ShellQuote(tmpRemoteDir)), nil)
+	if strings.TrimSpace(string(tmpDirCheck)) != "ok" {
+		return fmt.Errorf("failed to create temp directory %s", tmpRemoteDir)
 	}
 	defer func() {
-		cleanupOut, cleanupErr := dh.runSudo(client, fmt.Sprintf("rm -rf %s", utils.ShellQuote(tmpRemoteDir)), nil)
-		if cleanupErr != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("error cleaning remote temp directory %s: %s", tmpRemoteDir, cleanupOut))
-		}
+		dh.runSudo(client, fmt.Sprintf("rm -rf %s", utils.ShellQuote(tmpRemoteDir)), nil)
 	}()
 
 	// Upload witness binary to remote host
@@ -370,9 +370,12 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 	if err := client.TransferFile(binaryPath, remoteBinaryTmpPath); err != nil {
 		return fmt.Errorf("uploading binary: %w", err)
 	}
-	stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("mv %s /usr/local/bin/witness && chmod 755 /usr/local/bin/witness", utils.ShellQuote(remoteBinaryTmpPath)), nil)
-	if stdErr != nil {
-		return fmt.Errorf("installing binary on remote: %s", string(stdOut))
+	dh.runSudo(client, fmt.Sprintf("mv %s /usr/local/bin/witness && chmod 755 /usr/local/bin/witness", utils.ShellQuote(remoteBinaryTmpPath)), nil)
+
+	// Verify binary was installed
+	binCheck, _ := dh.runSudo(client, "command -v witness", nil)
+	if strings.TrimSpace(string(binCheck)) == "" {
+		return fmt.Errorf("failed to install witness binary on remote host")
 	}
 
 	for _, deployFile := range deployFileList {
@@ -405,22 +408,13 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 			return fmt.Errorf("closing tmp remote file [%s]: %w", tmpRemoteFilePath, err)
 		}
 
-		stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("mv %s %s", utils.ShellQuote(tmpRemoteFilePath), utils.ShellQuote(deployFile.RemoteFilePath)), nil)
-		if stdErr != nil {
-			return fmt.Errorf("error while moving remote file do location: %s", stdOut)
-		}
+		dh.runSudo(client, fmt.Sprintf("mv %s %s", utils.ShellQuote(tmpRemoteFilePath), utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 
 		if filepath.Base(deployFile.RemoteFilePath) == "age.key" {
-			stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("chmod 600 %s", utils.ShellQuote(deployFile.RemoteFilePath)), nil)
-			if stdErr != nil {
-				return fmt.Errorf("error while setting remote file permissions: %s", stdOut)
-			}
+			dh.runSudo(client, fmt.Sprintf("chmod 600 %s", utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 		}
 
-		stdOut, stdErr = dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s", utils.ShellQuote(deployFile.RemoteFileOwner), utils.ShellQuote(deployFile.RemoteFilePath)), nil)
-		if stdErr != nil {
-			return fmt.Errorf("error while changing remote file owner: %s", stdOut)
-		}
+		dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s", utils.ShellQuote(deployFile.RemoteFileOwner), utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 	}
 
 	return nil
