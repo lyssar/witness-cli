@@ -101,21 +101,28 @@ Input ──► Git Sync ──► Discovery ──► Staging ──► Diff �
 Deploy the observer to a remote host with systemd.
 
 ```bash
-witness deploy manifest.yaml \
+witness deploy my-observer.yaml \
   --host myserver.example.com \
-  --ssh-user deploy \
-  --age-key ~/.config/witness/my-server/age.key
+  --ssh-user shens \
+  --ssh-key ~/.ssh/id_rsa \
+  --age-key ~/.age/infra.key
 ```
 
 **Flags:**
 
 | Flag | Default | Description |
 |---|---|---|
-| `-a, --age-key` | `""` | Path to age key for remote deployment |
-| `-u, --ssh-user` | `""` | SSH user for remote host |
+| `-a, --age-key` | `""` | Local path to age key (uploaded to server) |
+| `-u, --ssh-user` | `""` | SSH user with sudo access |
 | `-k, --ssh-key` | `""` | SSH private key path (optional, uses SSH config if omitted) |
 | `--host` | `""` | Remote host to deploy to |
 | `--binary-path` | auto-detect | Path to witness binary to upload |
+
+<div class="highlight-box">
+<strong>Two different users:</strong><br>
+• <code>--ssh-user</code> — your SSH login (e.g. <code>shens</code>) with sudo access<br>
+• <code>metadata.user</code> in manifest — the execution user for reconcile (e.g. <code>witness</code>)
+</div>
 
 **Deploy phases:**
 

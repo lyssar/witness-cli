@@ -91,15 +91,22 @@ Deploys the Observer to a remote server.
 ```bash
 witness deploy my-observer.yaml \
   --host myserver.example.com \
-  --ssh-user deploy \
+  --ssh-user shens \
   --ssh-key ~/.ssh/id_rsa \
-  --age-key /home/deploy/.age/infra.key
+  --age-key ~/.age/infra.key
 ```
+
+<div class="highlight-box">
+<strong>Two different users:</strong><br>
+• <code>--ssh-user</code> — your SSH login with sudo access<br>
+• <code>metadata.user</code> in manifest — the execution user for reconcile
+</div>
 
 Responsibilities:
 
-- connect via SSH
-- create config directory at `/home/<user>/.config/witness/<project>/`
+- connect via SSH as your user
+- create config directory at `/home/<metadata.user>/.config/witness/<project>/`
+- set ownership to `metadata.user`
 - copy observer manifest and age key
 - install/update systemd service and timer
 - prepare the observer runtime on the target host
@@ -109,7 +116,7 @@ Behavior:
 - if `--host` is omitted, localhost is assumed
 - if SSH user/key are omitted, normal SSH resolution is used
 - existing deployed observer files may be replaced
-- the target user must exist on the remote host
+- the target user (`metadata.user`) must exist on the remote host
 
 ### `reconcile`
 

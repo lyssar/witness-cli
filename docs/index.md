@@ -35,11 +35,11 @@ curl -sfL https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh |
 # Create an observer manifest
 witness init
 
-# Deploy to your server
+# Deploy to your server (ssh-user = you, metadata.user = witness)
 witness deploy my-observer.yaml \
   --host myserver.example.com \
-  --ssh-user deploy \
-  --age-key /home/deploy/.age/infra.key
+  --ssh-user shens \
+  --age-key ~/.age/infra.key
 ```
 
 ## Quick Links

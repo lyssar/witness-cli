@@ -76,40 +76,39 @@ Deploy the Observer to your remote server via SSH:
 ```bash
 witness deploy my-observer.yaml \
   --host myserver.example.com \
-  --ssh-user deploy \
+  --ssh-user shens \
   --ssh-key ~/.ssh/id_rsa \
-  --age-key /home/deploy/.age/infra.key
+  --age-key ~/.age/infra.key
 ```
 
-This deploys:
-- **witness binary** to `/usr/local/bin/`
-- **Observer config** to `/home/deploy/.config/witness/my-observer/`
-- **systemd service** + **timer** for periodic reconciliation
-- **Hardened security** — `NoNewPrivileges`, `ProtectHome`, `PrivateTmp`, system call filtering
-
 <div class="highlight-box">
-<strong>What happens on the server:</strong><br>
-<strong>1.</strong> Config directory created at <code>/home/deploy/.config/witness/my-observer/</code><br>
-<strong>2.</strong> Manifest and age key uploaded<br>
-<strong>3.</strong> systemd service and timer installed<br>
-<strong>4.</strong> Timer enabled — reconcile runs every few minutes
+<strong>Two different users:</strong><br>
+• <code>--ssh-user</code> — your SSH login (e.g. <code>shens</code>) with sudo access<br>
+• <code>metadata.user</code> in manifest — the execution user for reconcile (e.g. <code>witness</code>)
 </div>
+
+The deploy command:
+1. Connects via SSH as your user
+2. Creates config at <code>/home/witness/.config/witness/my-observer/</code>
+3. Sets ownership to <code>witness:witness</code>
+4. Uploads manifest and age key
+5. Installs systemd service + timer running as <code>witness</code>
 
 ## Step 5: Verify
 
-SSH into the server and check the service:
+SSH into the server as the execution user and check:
 
 ```bash
-ssh deploy@myserver.example.com
+ssh witness@myserver.example.com
 
 # Check timer status
-systemctl status witness.timer
+systemctl --user status witness.timer
 
 # Check last reconcile
-journalctl -u witness.service --since "5 minutes ago"
+journalctl --user -u witness.service --since "5 minutes ago"
 
 # Manual reconcile (if needed)
-witness reconcile /home/deploy/.config/witness/my-observer/
+witness reconcile ~/.config/witness/my-observer/
 ```
 
 ---
@@ -117,7 +116,7 @@ witness reconcile /home/deploy/.config/witness/my-observer/
 ## Runtime Layout on the Server
 
 ```
-/home/deploy/.config/witness/my-observer/
+/home/witness/.config/witness/my-observer/
 ├── manifest.yaml    # Observer definition
 ├── age.key          # Age identity for secret decryption
 ├── state.json       # Reconcile state
