@@ -32,11 +32,14 @@ Define your applications, push to the repo, and Witness enforces the state on ev
 # Install
 curl -sfL https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh | sh
 
-# Create an observer
-witness init my-server --local
+# Create an observer manifest
+witness init
 
-# Reconcile
-witness reconcile ~/.config/witness/my-server/
+# Deploy to your server
+witness deploy my-observer.yaml \
+  --host myserver.example.com \
+  --ssh-user deploy \
+  --age-key /home/deploy/.age/infra.key
 ```
 
 ## Quick Links

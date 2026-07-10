@@ -7,7 +7,7 @@ title: Quickstart
 
 > *"From one Git repo, many applications arise."*
 
-This guide walks through setting up Witness from scratch on a local machine.
+This guide walks through setting up Witness as a daemon on a remote server.
 
 ## Step 1: Install Witness
 
@@ -17,40 +17,35 @@ curl -sfL https://raw.githubusercontent.com/lyssar/witness-cli/main/install.sh |
 
 Or see the [installation guide](installation) for alternatives.
 
-## Step 2: Create an Observer
+## Step 2: Create an Observer Manifest
 
-The **Observer** is your watcher — it defines the Git repository to watch and where to sync:
+The **Observer** defines the Git repository to watch and where to sync. Run on your local machine:
 
 ```bash
-witness init my-server --local
+witness init
 ```
 
 The interactive wizard will ask for:
 
 | Prompt | Example | Description |
 |---|---|---|
-| Observer name | `my-server` | Identifier for this observer |
-| Execution user | `witness-daemon` | System user for reconcile |
-| Destination path | `/var/lib/witness` | Root for repo sync |
+| Age key path | `/home/deploy/.age/infra.key` | Existing age key for secret encryption |
+| Observer name | `my-observer` | Identifier for this observer |
+| Execution user | `deploy` | System user for reconcile on target host |
+| Destination path | `/opt/witness` | Root for repo sync on target host |
 | Repository URL | `https://github.com/org/infra.git` | Git repo to watch |
 | Target revision | `main` | Branch, tag, or commit |
-| Git user | `harness` | Git auth user |
-| Access token | `ghp_...` | Git auth token |
+| Git user | `deploy` | Git auth user |
+| Access token | `ghp_...` | Git auth token (encrypted with age) |
 
-The `--local` flag creates a complete config root at `~/.config/witness/my-server/`:
-
-```
-~/.config/witness/my-server/
-├── manifest.yaml    # Observer definition
-└── age.key          # Generated age identity
-```
+Output: `my-observer.yaml` in the current directory.
 
 ## Step 3: Create an Application
 
 Applications declare what runs on your server. Generate one with:
 
 ```bash
-witness new-app -a ~/.config/witness/my-server/age.key
+witness new-app -a /home/deploy/.age/infra.key
 ```
 
 The wizard prompts for:
@@ -68,42 +63,75 @@ Output is a `witness-app.yaml` file. Place it in your Git repo:
 apps/
 └── hello/
     ├── witness.yaml       # ← generated manifest
-    ├── compose.yaml     # your Docker Compose file
-    └── secret.env.age   # optional encrypted secret
+    ├── compose.yaml       # your Docker Compose file
+    └── secret.env.age     # optional encrypted secret
 ```
 
-## Step 4: Reconcile
+Push the app manifest to your Git repository.
 
-Run a reconciliation cycle to apply the desired state:
+## Step 4: Deploy to the Server
 
-```bash
-witness reconcile ~/.config/witness/my-server/
-```
-
-<div class="highlight-box">
-<strong>What happens during reconcile:</strong><br>
-<strong>1.</strong> Git repo sync (clone or fetch)<br>
-<strong>2.</strong> Application discovery (finds all <code>witness.yaml</code> files)<br>
-<strong>3.</strong> Fileset staging with decrypted secrets<br>
-<strong>4.</strong> Drift detection against current state<br>
-<strong>5.</strong> Apply — create, update, or delete applications
-</div>
-
-## Step 5: Deploy to a Remote Host
-
-For production, push the observer to a remote server:
+Deploy the Observer to your remote server via SSH:
 
 ```bash
-witness deploy ~/.config/witness/my-server/manifest.yaml \
+witness deploy my-observer.yaml \
   --host myserver.example.com \
   --ssh-user deploy \
-  --age-key ~/.config/witness/my-server/age.key
+  --ssh-key ~/.ssh/id_rsa \
+  --age-key /home/deploy/.age/infra.key
 ```
 
 This deploys:
 - **witness binary** to `/usr/local/bin/`
+- **Observer config** to `/home/deploy/.config/witness/my-observer/`
 - **systemd service** + **timer** for periodic reconciliation
 - **Hardened security** — `NoNewPrivileges`, `ProtectHome`, `PrivateTmp`, system call filtering
+
+<div class="highlight-box">
+<strong>What happens on the server:</strong><br>
+<strong>1.</strong> Config directory created at <code>/home/deploy/.config/witness/my-observer/</code><br>
+<strong>2.</strong> Manifest and age key uploaded<br>
+<strong>3.</strong> systemd service and timer installed<br>
+<strong>4.</strong> Timer enabled — reconcile runs every few minutes
+</div>
+
+## Step 5: Verify
+
+SSH into the server and check the service:
+
+```bash
+ssh deploy@myserver.example.com
+
+# Check timer status
+systemctl status witness.timer
+
+# Check last reconcile
+journalctl -u witness.service --since "5 minutes ago"
+
+# Manual reconcile (if needed)
+witness reconcile /home/deploy/.config/witness/my-observer/
+```
+
+---
+
+## Runtime Layout on the Server
+
+```
+/home/deploy/.config/witness/my-observer/
+├── manifest.yaml    # Observer definition
+├── age.key          # Age identity for secret decryption
+├── state.json       # Reconcile state
+└── repo/            # Cloned Git repository
+
+/opt/witness/
+├── apps/
+│   └── hello/
+│       ├── docker-compose.yaml
+│       ├── .env
+│       └── data/
+└── archives/
+    └── hello-2026-04-25T12-30-00Z.tar.gz
+```
 
 ---
 

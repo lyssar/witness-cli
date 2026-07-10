@@ -65,34 +65,59 @@ The directory containing `witness.yaml` is the deployable source for that app.
 
 Creates an Observer manifest.
 
-It asks for the observer basics and needs an age key so encrypted values can be generated where needed.
+```bash
+witness init
+```
+
+The interactive wizard prompts for:
+
+| Prompt | Example | Description |
+|---|---|---|
+| Age key path | `/home/deploy/.age/infra.key` | Existing age key for secret encryption |
+| Observer name | `my-observer` | Identifier for this observer |
+| Execution user | `deploy` | System user for reconcile on target host |
+| Destination path | `/opt/witness` | Root for repo sync on target host |
+| Repository URL | `https://github.com/org/infra.git` | Git repo to watch |
+| Target revision | `main` | Branch, tag, or commit |
+| Git user | `deploy` | Git auth user |
+| Access token | `ghp_...` | Git auth token (encrypted with age) |
+
+Output: a single `my-observer.yaml` manifest file in the current directory.
 
 ### `deploy`
 
-Deploys the Observer to a server.
+Deploys the Observer to a remote server.
+
+```bash
+witness deploy my-observer.yaml \
+  --host myserver.example.com \
+  --ssh-user deploy \
+  --ssh-key ~/.ssh/id_rsa \
+  --age-key /home/deploy/.age/infra.key
+```
 
 Responsibilities:
 
 - connect via SSH
-- copy observer config and age key
+- create config directory at `/home/<user>/.config/witness/<project>/`
+- copy observer manifest and age key
 - install/update systemd service and timer
 - prepare the observer runtime on the target host
 
-Example:
-
-```text
-witness deploy --host 127.0.0.1 --ssh-key id_rsa --ssh-user deployuser my-observer.yaml
-```
-
 Behavior:
 
-- if host is omitted, localhost is assumed
+- if `--host` is omitted, localhost is assumed
 - if SSH user/key are omitted, normal SSH resolution is used
 - existing deployed observer files may be replaced
+- the target user must exist on the remote host
 
 ### `reconcile`
 
-Used by the systemd service.
+Used by the systemd service on the target host.
+
+```bash
+witness reconcile /home/deploy/.config/witness/my-observer/
+```
 
 Responsibilities:
 

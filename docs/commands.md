@@ -12,7 +12,7 @@ title: Commands
 Create an Observer manifest.
 
 ```bash
-witness init my-server
+witness init
 ```
 
 **Flags:**
@@ -20,11 +20,24 @@ witness init my-server
 | Flag | Default | Description |
 |---|---|---|
 | `-k, --age-key` | `""` | Path to existing age private key |
-| `--local` | `false` | Create complete config root with generated `age.key` |
+
+The interactive wizard prompts for:
+
+- **Age key path** — existing age key for secret encryption
+- **Observer name** — identifier for this observer
+- **Execution user** — system user for reconcile on target host
+- **Destination path** — root for repo sync on target host
+- **Repository URL** — Git repo to watch
+- **Target revision** — branch, tag, or commit
+- **Git user** — Git auth user
+- **Access token** — Git auth token (encrypted with age)
+
+Output: a single YAML manifest file in the current directory.
 
 <div class="highlight-box">
-<strong>Without <code>--local</code>:</strong> writes a single YAML manifest to the current directory.<br>
-<strong>With <code>--local</code>:</strong> creates <code>~/.config/witness/&lt;project&gt;/</code> with <code>manifest.yaml</code> and a freshly generated <code>age.key</code>.
+<strong>Usage:</strong><br>
+Run <code>witness init</code> on your local machine to create the manifest.<br>
+Then deploy it to the server with <code>witness deploy</code>.
 </div>
 
 ---
