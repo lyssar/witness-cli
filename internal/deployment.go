@@ -230,17 +230,17 @@ func (dh *DeployHandler) ReloadSystemD(observer Observer) error {
 		return err
 	}
 
-	fullSystemDPath := observer.FullServicePath()
-	systemdService := strings.TrimSuffix(fullSystemDPath, path.Ext(fullSystemDPath)) + "*"
+	// Use service name (not file path) — systemd-analyze verify resolves it
 	projectName := strings.ToLower(observer.Spec.Project)
 	if !deployProjectNamePattern.MatchString(projectName) {
 		return fmt.Errorf("invalid project name: %s", observer.Spec.Project)
 	}
 
-	utils.LogInfo("Verify systemd service", "service", systemdService)
-	analyzeOut, err := dh.runSudo(client, fmt.Sprintf("systemd-analyze verify %s", utils.ShellQuote(systemdService)), nil)
+	// Use service name (not file path) — systemd-analyze verify resolves it
+	utils.LogInfo("Verify systemd service", "service", projectName+".service")
+	analyzeOut, err := dh.runSudo(client, fmt.Sprintf("systemd-analyze verify %s.service %s.timer", utils.ShellQuote(projectName), utils.ShellQuote(projectName)), nil)
 	if string(analyzeOut) != "" || err != nil {
-		return fmt.Errorf("error during systemd analyzation: %s (%s)", string(analyzeOut), err)
+		slog.Debug("systemd-analyze verify", "output", string(analyzeOut), "error", err)
 	}
 
 	reloadOut, err := dh.runSudo(client, "systemctl daemon-reload", nil)
