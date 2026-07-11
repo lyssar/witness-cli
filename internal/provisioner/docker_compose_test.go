@@ -67,3 +67,127 @@ func (r *recordingRunner) RunWithStdin(_ context.Context, dir string, stdin stri
 	r.calls = append(r.calls, runnerCall{dir: dir, name: name, args: append([]string(nil), args...), stdin: stdin})
 	return nil
 }
+
+func TestDockerComposeSecretOnlyDrift(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	composePath := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatalf("write compose file: %v", err)
+	}
+
+	runner := &recordingRunner{}
+	p := NewDockerCompose(runner)
+	app := application.Application{Spec: application.Spec{ComposeFiles: []string{"compose.yaml"}}}
+	runtime := RuntimeContext{RuntimeSlug: "apps-hello", LiveDir: root, SecretsChanged: true}
+
+	if err := p.Apply(context.Background(), runtime, app); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	if len(runner.calls) != 1 {
+		t.Fatalf("expected 1 command call, got %d", len(runner.calls))
+	}
+	args := runner.calls[0].args
+	assertContains(t, args, "up")
+	assertContains(t, args, "--detach")
+	assertContains(t, args, "--force-recreate")
+	assertContains(t, args, "--remove-orphans")
+}
+
+func TestDockerComposeComposeOnlyDrift(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	composePath := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatalf("write compose file: %v", err)
+	}
+
+	runner := &recordingRunner{}
+	p := NewDockerCompose(runner)
+	app := application.Application{Spec: application.Spec{ComposeFiles: []string{"compose.yaml"}}}
+	runtime := RuntimeContext{RuntimeSlug: "apps-hello", LiveDir: root, ComposeFilesChanged: true}
+
+	if err := p.Apply(context.Background(), runtime, app); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	if len(runner.calls) != 1 {
+		t.Fatalf("expected 1 command call, got %d", len(runner.calls))
+	}
+	args := runner.calls[0].args
+	assertContains(t, args, "up")
+	assertNotContains(t, args, "--force-recreate")
+	assertContains(t, args, "--remove-orphans")
+}
+
+func TestDockerComposeNoDriftNoApply(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	composePath := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatalf("write compose file: %v", err)
+	}
+
+	runner := &recordingRunner{}
+	p := NewDockerCompose(runner)
+	app := application.Application{Spec: application.Spec{ComposeFiles: []string{"compose.yaml"}}}
+	runtime := RuntimeContext{RuntimeSlug: "apps-hello", LiveDir: root}
+
+	if err := p.Apply(context.Background(), runtime, app); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	if len(runner.calls) != 0 {
+		t.Fatalf("expected no command calls for no drift, got %d: %#v", len(runner.calls), runner.calls)
+	}
+}
+
+func TestDockerComposeBothDriftForceRecreate(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	composePath := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatalf("write compose file: %v", err)
+	}
+
+	runner := &recordingRunner{}
+	p := NewDockerCompose(runner)
+	app := application.Application{Spec: application.Spec{ComposeFiles: []string{"compose.yaml"}}}
+	runtime := RuntimeContext{RuntimeSlug: "apps-hello", LiveDir: root, ComposeFilesChanged: true, SecretsChanged: true}
+
+	if err := p.Apply(context.Background(), runtime, app); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	if len(runner.calls) != 1 {
+		t.Fatalf("expected 1 command call, got %d", len(runner.calls))
+	}
+	args := runner.calls[0].args
+	assertContains(t, args, "up")
+	assertContains(t, args, "--force-recreate")
+	assertContains(t, args, "--remove-orphans")
+}
+
+func assertContains(t *testing.T, slice []string, want string) {
+	t.Helper()
+	for _, s := range slice {
+		if s == want {
+			return
+		}
+	}
+	t.Fatalf("expected %q in args, got %#v", want, slice)
+}
+
+func assertNotContains(t *testing.T, slice []string, want string) {
+	t.Helper()
+	for _, s := range slice {
+		if s == want {
+			t.Fatalf("unexpected %q in args, got %#v", want, slice)
+		}
+	}
+}

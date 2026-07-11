@@ -50,11 +50,11 @@ func (Age) DecryptFile(ctx context.Context, request Request) error {
 		return fmt.Errorf("decrypt %q source %q: age decrypt: %w", request.OperationalID, request.SourcePath, err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(request.TargetPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(request.TargetPath), 0o700); err != nil {
 		return fmt.Errorf("decrypt %q target %q: create parent: %w", request.OperationalID, request.TargetPath, err)
 	}
 
-	targetFile, err := os.OpenFile(request.TargetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	targetFile, err := os.OpenFile(request.TargetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("decrypt %q target %q: open target: %w", request.OperationalID, request.TargetPath, err)
 	}

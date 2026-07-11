@@ -362,7 +362,7 @@ func (observer *Observer) WriteConfigRoot() error {
 	}
 
 	manifestPath := filepath.Join(configRoot, "manifest.yaml")
-	f, err := os.Create(manifestPath)
+	f, err := os.OpenFile(manifestPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("creating manifest file %s: %w", manifestPath, err)
 	}

@@ -30,6 +30,15 @@ func TestBuildAppStaging(t *testing.T) {
 		_ = cleanup()
 	}()
 
+	// Staging root must be 0700.
+	rootInfo, err := os.Stat(staging.Root)
+	if err != nil {
+		t.Fatalf("stat staging root: %v", err)
+	}
+	if got := rootInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("expected staging root mode 0700, got %o", got)
+	}
+
 	staged := filepath.Join(staging.Root, "compose.yaml")
 	content, err := os.ReadFile(staged)
 	if err != nil {
@@ -99,6 +108,15 @@ func TestBuildAppStagingDecryptsSecrets(t *testing.T) {
 	}
 	defer func() { _ = cleanup() }()
 
+	// Staging root must be 0700.
+	rootInfo, err := os.Stat(staging.Root)
+	if err != nil {
+		t.Fatalf("stat staging root: %v", err)
+	}
+	if got := rootInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("expected staging root mode 0700, got %o", got)
+	}
+
 	secretTarget := filepath.Join(staging.Root, "secrets", ".env")
 	content, err := os.ReadFile(secretTarget)
 	if err != nil {
@@ -106,6 +124,15 @@ func TestBuildAppStagingDecryptsSecrets(t *testing.T) {
 	}
 	if string(content) != "TOKEN=secret\n" {
 		t.Fatalf("unexpected secret content: %q", string(content))
+	}
+
+	// Decrypted secret files must be 0600.
+	secretInfo, err := os.Stat(secretTarget)
+	if err != nil {
+		t.Fatalf("stat secret: %v", err)
+	}
+	if got := secretInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected secret mode 0600, got %o", got)
 	}
 }
 

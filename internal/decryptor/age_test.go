@@ -60,4 +60,22 @@ func TestAgeDecryptFile(t *testing.T) {
 	if string(content) != "hello secret\n" {
 		t.Fatalf("unexpected plaintext: %q", string(content))
 	}
+
+	// Decrypted secret files must be 0600.
+	targetInfo, err := os.Stat(targetPath)
+	if err != nil {
+		t.Fatalf("stat target: %v", err)
+	}
+	if got := targetInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected target mode 0600, got %o", got)
+	}
+
+	// Parent directories created for secrets must be 0700.
+	parentInfo, err := os.Stat(filepath.Dir(targetPath))
+	if err != nil {
+		t.Fatalf("stat parent: %v", err)
+	}
+	if got := parentInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("expected parent mode 0700, got %o", got)
+	}
 }

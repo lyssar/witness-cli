@@ -230,13 +230,6 @@ func (r *Runner) Run(ctx context.Context) error {
 
 		currentState := stateFile.Applications[app.OperationalID]
 		needsApply := appEntry.drift.HasDrift || currentState.Status == state.StatusFailed || currentState.Status == state.StatusDeleting
-		// If the commit changed and the app has secrets, force re-apply to re-decrypt
-		// secrets. Secret source files are excluded from ManagedFiles (they are not copied
-		// to the live directory), so drift detection won't catch secret changes. Instead,
-		// any new commit on an app with secrets triggers a fresh decrypt cycle.
-		if !needsApply && resolvedCommit != currentState.LastSuccessfulResolvedCommit && len(app.Application.Spec.Secrets) > 0 {
-			needsApply = true
-		}
 		if !needsApply {
 			currentState = desiredStateEntry(now, app, resolvedCommit)
 			currentState.LastError = ""
@@ -374,26 +367,17 @@ func (r *Runner) applyApp(ctx context.Context, destinationRoot string, runtime a
 	for _, cf := range runtime.app.Application.Spec.ComposeFiles {
 		composeSet[cf] = struct{}{}
 	}
-	secretSourceSet := make(map[string]struct{}, len(runtime.app.Application.Spec.Secrets))
-	for _, secret := range runtime.app.Application.Spec.Secrets {
-		secretSourceSet[filepath.ToSlash(filepath.Clean(secret.Source))] = struct{}{}
-	}
 
 	composeFilesChanged := false
-	secretsChanged := false
-	allChanged := append(append([]string(nil), runtime.drift.Changed...), runtime.drift.Missing...)
+	allChanged := append(append(append([]string(nil), runtime.drift.Changed...), runtime.drift.Missing...), runtime.drift.TypeMismatch...)
 	for _, f := range allChanged {
-		if !composeFilesChanged {
-			if _, ok := composeSet[f]; ok {
-				composeFilesChanged = true
-			}
-		}
-		if !secretsChanged {
-			if _, ok := secretSourceSet[f]; ok {
-				secretsChanged = true
-			}
+		if _, ok := composeSet[f]; ok {
+			composeFilesChanged = true
+			break
 		}
 	}
+
+	secretsChanged := len(runtime.drift.SecretChanged) > 0
 
 	runtimeRuntime := provisioner.RuntimeContext{
 		OperationalID:        runtime.app.OperationalID,

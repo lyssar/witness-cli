@@ -22,13 +22,12 @@ func buildAppStaging(ctx context.Context, ageKeyPath string, decryptors map[stri
 	if err != nil {
 		return AppStaging{}, nil, fmt.Errorf("creating staging root: %w", err)
 	}
+	if err := os.Chmod(root, 0o700); err != nil {
+		_ = os.RemoveAll(root)
+		return AppStaging{}, nil, fmt.Errorf("hardening staging root %q: %w", root, err)
+	}
 
 	cleanup := func() error {
-		// Clean up registry password temp file if it exists
-		staging := AppStaging{Root: root}
-		if staging.RegistryPasswordPath != "" {
-			_ = os.Remove(staging.RegistryPasswordPath)
-		}
 		return os.RemoveAll(root)
 	}
 

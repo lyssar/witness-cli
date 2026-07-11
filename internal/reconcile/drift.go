@@ -11,12 +11,13 @@ import (
 	"github.com/lyssar/witness-cli/internal/application"
 )
 
-// DriftResult captures non-secret drift findings.
+// DriftResult captures drift findings for managed files and secret targets.
 type DriftResult struct {
 	HasDrift              bool
 	Changed               []string
 	Missing               []string
 	TypeMismatch          []string
+	SecretChanged         []string
 	DeferredSecretTargets []string
 	Warnings              []application.FilesetWarning
 }
@@ -38,7 +39,8 @@ func detectDrift(destinationRoot string, app application.DiscoveredApplication, 
 			for _, f := range fileset.ManagedFiles {
 				result.Missing = append(result.Missing, f.RelativePath)
 			}
-			result.HasDrift = len(result.Missing) > 0
+			result.SecretChanged = append(result.SecretChanged, fileset.DeferredSecretTargets...)
+			result.HasDrift = len(result.Missing) > 0 || len(result.SecretChanged) > 0
 			return result, nil
 		}
 		return DriftResult{}, fmt.Errorf("stat live app dir %q: %w", liveAppDir, err)
@@ -81,7 +83,42 @@ func detectDrift(destinationRoot string, app application.DiscoveredApplication, 
 		}
 	}
 
-	result.HasDrift = len(result.Changed) > 0 || len(result.Missing) > 0 || len(result.TypeMismatch) > 0
+	// Compare secret targets — explicit drift detection for decrypted secrets.
+	for _, secretTarget := range fileset.DeferredSecretTargets {
+		stagedPath := filepath.Join(staging.Root, filepath.FromSlash(secretTarget))
+		if _, err := os.Stat(stagedPath); err != nil {
+			if os.IsNotExist(err) {
+				// Staged secret target missing — skip comparison.
+				continue
+			}
+			return DriftResult{}, fmt.Errorf("stat staging secret target %q: %w", secretTarget, err)
+		}
+
+		livePath := filepath.Join(liveAppDir, filepath.FromSlash(secretTarget))
+		liveEntry, err := os.Lstat(livePath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				result.SecretChanged = append(result.SecretChanged, secretTarget)
+				continue
+			}
+			return DriftResult{}, fmt.Errorf("lstat live secret target %q: %w", livePath, err)
+		}
+
+		if !liveEntry.Mode().IsRegular() {
+			result.SecretChanged = append(result.SecretChanged, secretTarget)
+			continue
+		}
+
+		same, err := filesEqual(stagedPath, livePath)
+		if err != nil {
+			return DriftResult{}, fmt.Errorf("comparing secret %q: %w", secretTarget, err)
+		}
+		if !same {
+			result.SecretChanged = append(result.SecretChanged, secretTarget)
+		}
+	}
+
+	result.HasDrift = len(result.Changed) > 0 || len(result.Missing) > 0 || len(result.TypeMismatch) > 0 || len(result.SecretChanged) > 0
 	return result, nil
 }
 

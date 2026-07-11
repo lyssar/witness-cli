@@ -58,11 +58,14 @@ func (p *DockerCompose) Apply(ctx context.Context, runtime RuntimeContext, app a
 	// Compose file changes: Docker detects them and recreates as needed.
 	// Secret-only changes: Docker can't detect secret file content changes,
 	// so we need --force-recreate to re-mount Docker secrets.
+	// When both changed, --force-recreate is still required for secret re-mounting.
 	switch {
-	case runtime.ComposeFilesChanged:
-		return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, "up", "--detach", "--remove-orphans")...)
-	case runtime.SecretsChanged:
-		return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, "up", "--detach", "--remove-orphans", "--force-recreate")...)
+	case runtime.ComposeFilesChanged || runtime.SecretsChanged:
+		args := []string{"up", "--detach", "--remove-orphans"}
+		if runtime.SecretsChanged {
+			args = append(args, "--force-recreate")
+		}
+		return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, args...)...)
 	default:
 		return nil
 	}

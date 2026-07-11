@@ -194,6 +194,7 @@ type fakeProvisioner struct {
 	applyCalls    int
 	deleteCalls   int
 	deleteErr     error
+	lastRuntime   provisioner.RuntimeContext
 }
 
 func (f *fakeProvisioner) Name() string { return application.ProvisionerDockerCompose }
@@ -203,8 +204,9 @@ func (f *fakeProvisioner) Validate(_ context.Context, _ provisioner.RuntimeConte
 	return nil
 }
 
-func (f *fakeProvisioner) Apply(_ context.Context, _ provisioner.RuntimeContext, _ application.Application) error {
+func (f *fakeProvisioner) Apply(_ context.Context, rt provisioner.RuntimeContext, _ application.Application) error {
 	f.applyCalls++
+	f.lastRuntime = rt
 	return nil
 }
 
@@ -282,5 +284,132 @@ func assertFileContent(t *testing.T, path string, expected string) {
 	}
 	if string(content) != expected {
 		t.Fatalf("unexpected content for %q: %q", path, string(content))
+	}
+}
+
+func TestRunnerSecretOnlyDriftSetsSecretsChangedFlag(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary is required for reconcile runner tests")
+	}
+
+	fixture := newMutableGitFixture(t)
+	configRoot := t.TempDir()
+	destinationRoot := filepath.Join(t.TempDir(), "dest")
+	writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "apps", destinationRoot))
+	writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
+
+	decrypt := fakeDecryptor{content: "TOKEN=initial\n"}
+	prov := &fakeProvisioner{}
+	runner := NewRunner(configRoot, WithDecryptor(decrypt), WithProvisioner(prov))
+
+	// Initial reconcile: live doesn't exist → both managed files and secrets are missing
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("initial reconcile: %v", err)
+	}
+	if prov.applyCalls != 1 {
+		t.Fatalf("expected one apply call, got %d", prov.applyCalls)
+	}
+	// First deploy: secrets are new → SecretsChanged must be true
+	if !prov.lastRuntime.SecretsChanged {
+		t.Fatalf("expected SecretsChanged=true on initial deploy, got false")
+	}
+	if !prov.lastRuntime.ComposeFilesChanged {
+		t.Fatalf("expected ComposeFilesChanged=true on initial deploy (missing compose), got false")
+	}
+
+	// Change only the decrypted secret content — no compose source change
+	decrypt.content = "TOKEN=rotated\n"
+	runner = NewRunner(configRoot, WithDecryptor(decrypt), WithProvisioner(prov))
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("secret-only reconcile: %v", err)
+	}
+	if prov.applyCalls != 2 {
+		t.Fatalf("expected second apply call, got %d", prov.applyCalls)
+	}
+	// Secret-only change: SecretsChanged=true, ComposeFilesChanged=false
+	if !prov.lastRuntime.SecretsChanged {
+		t.Fatalf("expected SecretsChanged=true after secret-only update, got false")
+	}
+	if prov.lastRuntime.ComposeFilesChanged {
+		t.Fatalf("expected ComposeFilesChanged=false after secret-only update, got true")
+	}
+}
+
+func TestRunnerNoDriftSkipsApply(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary is required for reconcile runner tests")
+	}
+
+	fixture := newMutableGitFixture(t)
+	configRoot := t.TempDir()
+	destinationRoot := filepath.Join(t.TempDir(), "dest")
+	writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "apps", destinationRoot))
+	writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
+
+	decrypt := fakeDecryptor{content: "TOKEN=initial\n"}
+	prov := &fakeProvisioner{}
+	runner := NewRunner(configRoot, WithDecryptor(decrypt), WithProvisioner(prov))
+
+	// Initial reconcile
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("initial reconcile: %v", err)
+	}
+	if prov.applyCalls != 1 {
+		t.Fatalf("expected one apply call, got %d", prov.applyCalls)
+	}
+
+	// Second reconcile with no changes — should skip apply
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("second reconcile: %v", err)
+	}
+	if prov.applyCalls != 1 {
+		t.Fatalf("expected no additional apply call on no-drift, got %d", prov.applyCalls)
+	}
+}
+
+func TestRunnerComposeTypeMismatchSetsComposeFilesChanged(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary is required for reconcile runner tests")
+	}
+
+	fixture := newMutableGitFixture(t)
+	configRoot := t.TempDir()
+	destinationRoot := filepath.Join(t.TempDir(), "dest")
+	writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "apps", destinationRoot))
+	writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
+
+	decrypt := fakeDecryptor{content: "TOKEN=initial\n"}
+	prov := &fakeProvisioner{}
+	runner := NewRunner(configRoot, WithDecryptor(decrypt), WithProvisioner(prov))
+
+	// Initial reconcile — populates live dir with a regular compose.yaml
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("initial reconcile: %v", err)
+	}
+	if prov.applyCalls != 1 {
+		t.Fatalf("expected one apply call, got %d", prov.applyCalls)
+	}
+	if !prov.lastRuntime.ComposeFilesChanged {
+		t.Fatalf("expected ComposeFilesChanged=true on initial deploy, got false")
+	}
+
+	// Replace the live compose.yaml with a symlink to simulate TypeMismatch drift
+	liveCompose := filepath.Join(destinationRoot, "hello", "compose.yaml")
+	if err := os.Remove(liveCompose); err != nil {
+		t.Fatalf("remove live compose: %v", err)
+	}
+	if err := os.Symlink("/somewhere/else", liveCompose); err != nil {
+		t.Fatalf("symlink live compose: %v", err)
+	}
+
+	// Second reconcile — drift detector sees TypeMismatch, must set ComposeFilesChanged
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("type-mismatch reconcile: %v", err)
+	}
+	if prov.applyCalls != 2 {
+		t.Fatalf("expected second apply call, got %d", prov.applyCalls)
+	}
+	if !prov.lastRuntime.ComposeFilesChanged {
+		t.Fatalf("expected ComposeFilesChanged=true when compose file is a symlink, got false")
 	}
 }

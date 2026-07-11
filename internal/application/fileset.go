@@ -133,6 +133,11 @@ func BuildFileSet(app DiscoveredApplication, submodulePaths []string) (FileSet, 
 			return nil
 		}
 
+		// Reject undeclared encrypted source files — they must not be promoted to the live directory.
+		if strings.HasSuffix(relSlash, ".age") {
+			return fmt.Errorf("undeclared encrypted file %q would be promoted to live directory; declare it as a secret source in witness.yaml or remove it from the source directory", relSlash)
+		}
+
 		managedByPath[relSlash] = ManagedFile{RelativePath: relSlash, SourcePath: path}
 		return nil
 	})
