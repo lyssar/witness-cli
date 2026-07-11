@@ -74,13 +74,15 @@ func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 
 	// ComposeFiles — required, must have at least one
 	if len(app.Spec.ComposeFiles) == 0 {
+		var composeFile string
 		err = huh.NewInput().
 			Title("At least one compose file is required").
 			Description("Path to docker-compose file (relative to app directory)").
 			Validate(huh.ValidateNotEmpty()).
-			Value(&app.Spec.ComposeFiles).
+			Value(&composeFile).
 			Run()
 		utils.CheckErr(err)
+		app.Spec.ComposeFiles = append(app.Spec.ComposeFiles, composeFile)
 	}
 
 	utils.LogInfo("Current manifest",
