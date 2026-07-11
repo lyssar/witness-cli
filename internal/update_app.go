@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/charmbracelet/huh"
+	"github.com/lyssar/witness-cli/internal/application"
 	"github.com/lyssar/witness-cli/templates"
 	"github.com/lyssar/witness-cli/utils"
 	"github.com/spf13/cobra"
@@ -112,7 +113,7 @@ func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 }
 
 func updateRegistryCredentials(app *App, ageKey string) error {
-	creds := &v1RegistryCredentials{}
+	creds := &application.RegistryCredentials{}
 
 	if app.Spec.RegistryCredentials != nil {
 		creds = app.Spec.RegistryCredentials
@@ -152,8 +153,7 @@ func updateRegistryCredentials(app *App, ageKey string) error {
 }
 
 func addSecret(app *App) error {
-	var secret v1Secret
-	secret.Decryptor = "age"
+	secret := application.Secret{Decryptor: "age"}
 
 	err := huh.NewInput().
 		Title("Secret source file").

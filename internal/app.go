@@ -8,45 +8,27 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/creasty/defaults"
+	"github.com/lyssar/witness-cli/internal/application"
 	"github.com/lyssar/witness-cli/templates"
 	"github.com/lyssar/witness-cli/utils"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
-type v1Secret struct {
-	Source    string `yaml:"source"`
-	Target    string `yaml:"target"`
-	Decryptor string `yaml:"decryptor"`
-}
-
-type AppSpec struct {
-	Provisioner         string                 `yaml:"provisioner"`
-	ComposeFiles        []string               `yaml:"composeFiles"`
-	Secrets             []v1Secret             `yaml:"secrets,omitempty"`
-	RegistryCredentials *v1RegistryCredentials `yaml:"registryCredentials,omitempty"`
-}
-
-type v1RegistryCredentials struct {
-	Registry string `yaml:"registry"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"` // age-encrypted
-}
-
 type App struct {
-	ApiVersion string   `default:"witness.dev/v1alpha1" yaml:"apiVersion"`
-	Kind       string   `default:"Application" yaml:"kind"`
-	Metadata   Metadata `yaml:"metadata"`
-	Spec       AppSpec  `yaml:"spec"`
-	AgeKeyFile string   `yaml:"-"`
+	APIVersion string               `default:"witness.dev/v1alpha1" yaml:"apiVersion"`
+	Kind       string               `default:"Application" yaml:"kind"`
+	Metadata   application.Metadata `yaml:"metadata"`
+	Spec       application.Spec     `yaml:"spec"`
+	AgeKeyFile string               `yaml:"-"`
 }
 
 func NewApp(cmd *cobra.Command) App {
-	spec := &AppSpec{}
+	spec := &application.Spec{}
 	err := defaults.Set(spec)
 	utils.CheckErr(err)
 
-	metadata := &Metadata{}
+	metadata := &application.Metadata{}
 	err = defaults.Set(metadata)
 	utils.CheckErr(err)
 
@@ -152,7 +134,7 @@ func (app *App) Configure() {
 
 	if addSecrets {
 		for {
-			var secret v1Secret
+			var secret application.Secret
 			secret.Decryptor = "age"
 
 			err = huh.NewInput().
@@ -204,7 +186,7 @@ func (app *App) Configure() {
 	utils.CheckErr(err)
 
 	if addRegistry {
-		var creds v1RegistryCredentials
+		creds := &application.RegistryCredentials{}
 
 		err = huh.NewInput().
 			Title("Registry URL").
@@ -233,7 +215,7 @@ func (app *App) Configure() {
 		utils.CheckErr(err)
 		creds.Password = encryptedPassword
 
-		app.Spec.RegistryCredentials = &creds
+		app.Spec.RegistryCredentials = creds
 	}
 }
 

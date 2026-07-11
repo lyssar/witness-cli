@@ -3,6 +3,21 @@ apiVersion: witness.dev/v1alpha1
 kind: Application
 metadata:
   name: {{ .Metadata.Name }}
+{{- if .Metadata.Description }}
+  description: {{ .Metadata.Description }}
+{{- end }}
+{{- if .Metadata.Labels }}
+  labels:
+{{- range $key, $value := .Metadata.Labels }}
+    {{ $key }}: {{ $value }}
+{{- end }}
+{{- end }}
+{{- if .Metadata.Annotations }}
+  annotations:
+{{- range $key, $value := .Metadata.Annotations }}
+    {{ $key }}: {{ $value }}
+{{- end }}
+{{- end }}
 spec:
   provisioner: {{ .Spec.Provisioner }}
   composeFiles:
