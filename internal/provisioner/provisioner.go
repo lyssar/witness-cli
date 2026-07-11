@@ -8,11 +8,11 @@ import (
 
 // RuntimeContext provides stable reconcile inputs to provisioners.
 type RuntimeContext struct {
-	OperationalID          string
-	RuntimeSlug            string
-	LiveDir                string
-	SourceDir              string
-	RegistryPasswordPath   string // path to decrypted registry password file
+	OperationalID        string
+	RuntimeSlug          string
+	LiveDir              string
+	SourceDir            string
+	RegistryPasswordPath string // path to decrypted registry password file
 }
 
 // Provisioner defines the runtime contract used by reconcile orchestration.

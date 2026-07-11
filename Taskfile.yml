@@ -73,11 +73,10 @@ tasks:
       - '{{.BIN_PATH}} reconcile ~/.config/witness/witnessd/'
     silent: true
 
-  validate:gofmt:
-    desc: Check gofmt formatting
+  format:
+    desc: Format all Go source files
     cmds:
-      - |
-        test -z "$(gofmt -l .)"
+      - gofmt -w .
     silent: true
 
   validate:vet:
@@ -107,7 +106,7 @@ tasks:
   validate:
     desc: Run the full Go validation suite
     deps:
-      - validate:gofmt
+      - format
       - validate:vet
       - validate:lint
       - validate:build

@@ -52,10 +52,10 @@ type recordingRunner struct {
 }
 
 type runnerCall struct {
-	dir    string
-	name   string
-	args   []string
-	stdin  string
+	dir   string
+	name  string
+	args  []string
+	stdin string
 }
 
 func (r *recordingRunner) Run(_ context.Context, dir string, name string, args ...string) error {

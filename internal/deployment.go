@@ -182,7 +182,7 @@ func (dh *DeployHandler) Validate() error {
 	} else {
 		// User exists — ensure docker group membership
 		utils.LogInfo("Adding user to docker group", "user", observer.Metadata.User)
-		dh.runSudo(remoteClient, fmt.Sprintf("usermod -aG docker %s", utils.ShellQuote(observer.Metadata.User)), nil)
+		_, _ = dh.runSudo(remoteClient, fmt.Sprintf("usermod -aG docker %s", utils.ShellQuote(observer.Metadata.User)), nil)
 	}
 
 	serviceName := strings.ToLower(observer.Metadata.Name)
@@ -248,9 +248,9 @@ func (dh *DeployHandler) ReloadSystemD(observer Observer) error {
 	}
 
 	// daemon-reload, restart, enable — ignore SSH EOF errors (commands succeed silently)
-	dh.runSudo(client, "systemctl daemon-reload", nil)
-	dh.runSudo(client, fmt.Sprintf("systemctl reload-or-restart %s.timer", utils.ShellQuote(projectName)), nil)
-	dh.runSudo(client, fmt.Sprintf("systemctl enable --quiet --no-warn %s", utils.ShellQuote(projectName)), nil)
+	_, _ = dh.runSudo(client, "systemctl daemon-reload", nil)
+	_, _ = dh.runSudo(client, fmt.Sprintf("systemctl reload-or-restart %s.timer", utils.ShellQuote(projectName)), nil)
+	_, _ = dh.runSudo(client, fmt.Sprintf("systemctl enable --quiet --no-warn %s", utils.ShellQuote(projectName)), nil)
 
 	return nil
 }
@@ -270,7 +270,7 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 	remoteAgeFilePath := fmt.Sprintf("%s/%s/age.key", observerUserHomeConfigDir, strings.ToLower(observer.Spec.Project))
 	remoteManifestPath := fmt.Sprintf("%s/%s/manifest.yaml", observerUserHomeConfigDir, strings.ToLower(observer.Spec.Project))
 	utils.LogInfo("Creating destination for user")
-	dh.runSudo(client, fmt.Sprintf("mkdir -p %s %s", utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
+	_, _ = dh.runSudo(client, fmt.Sprintf("mkdir -p %s %s", utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
 
 	// Verify directory was created (ignore SSH session EOF errors)
 	verifyOut, _ := dh.runSudo(client, fmt.Sprintf("test -d %s && echo ok", utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
@@ -280,11 +280,11 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 
 	utils.LogInfo("Change owner")
 
-	dh.runSudo(client, fmt.Sprintf("chown -R %s:%[1]s %s %s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir), utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
+	_, _ = dh.runSudo(client, fmt.Sprintf("chown -R %s:%[1]s %s %s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir), utils.ShellQuote(observer.Spec.Destination), utils.ShellQuote(filepath.Dir(remoteManifestPath))), nil)
 
 	// Pre-install GitHub host key — witness user needs it for git clone
 	utils.LogInfo("Installing GitHub host key")
-	dh.runSudo(client, fmt.Sprintf("mkdir -p /home/%s/.ssh && ssh-keyscan github.com >> /home/%s/.ssh/known_hosts && chown -R %s:%s /home/%s/.ssh", observer.Metadata.User, observer.Metadata.User, observer.Metadata.User, observer.Metadata.User, observer.Metadata.User), nil)
+	_, _ = dh.runSudo(client, fmt.Sprintf("mkdir -p /home/%s/.ssh && ssh-keyscan github.com >> /home/%s/.ssh/known_hosts && chown -R %s:%s /home/%s/.ssh", observer.Metadata.User, observer.Metadata.User, observer.Metadata.User, observer.Metadata.User, observer.Metadata.User), nil)
 
 	renderer, err := templates.NewRenderer()
 	if err != nil {
@@ -369,7 +369,7 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 		return fmt.Errorf("creating temp directory: %w", err)
 	}
 	defer func() {
-		client.SSH.Run("rm -rf " + utils.ShellQuote(tmpRemoteDir))
+		_, _ = client.SSH.Run("rm -rf " + utils.ShellQuote(tmpRemoteDir))
 	}()
 
 	// Upload witness binary to remote host
@@ -386,7 +386,7 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 	if err := client.TransferFile(binaryPath, remoteBinaryTmpPath); err != nil {
 		return fmt.Errorf("uploading binary: %w", err)
 	}
-	dh.runSudo(client, fmt.Sprintf("mv %s /usr/local/bin/witness && chmod 755 /usr/local/bin/witness", utils.ShellQuote(remoteBinaryTmpPath)), nil)
+	_, _ = dh.runSudo(client, fmt.Sprintf("mv %s /usr/local/bin/witness && chmod 755 /usr/local/bin/witness", utils.ShellQuote(remoteBinaryTmpPath)), nil)
 
 	// Verify binary was installed
 	binCheck, _ := dh.runSudo(client, "command -v witness", nil)
@@ -424,17 +424,17 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 			return fmt.Errorf("closing tmp remote file [%s]: %w", tmpRemoteFilePath, err)
 		}
 
-		dh.runSudo(client, fmt.Sprintf("mv %s %s", utils.ShellQuote(tmpRemoteFilePath), utils.ShellQuote(deployFile.RemoteFilePath)), nil)
+		_, _ = dh.runSudo(client, fmt.Sprintf("mv %s %s", utils.ShellQuote(tmpRemoteFilePath), utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 
 		if filepath.Base(deployFile.RemoteFilePath) == "age.key" {
-			dh.runSudo(client, fmt.Sprintf("chmod 600 %s", utils.ShellQuote(deployFile.RemoteFilePath)), nil)
+			_, _ = dh.runSudo(client, fmt.Sprintf("chmod 600 %s", utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 		}
 
 		if filepath.Base(deployFile.RemoteFilePath) == sshKeyFilename {
-			dh.runSudo(client, fmt.Sprintf("chmod 600 %s", utils.ShellQuote(deployFile.RemoteFilePath)), nil)
+			_, _ = dh.runSudo(client, fmt.Sprintf("chmod 600 %s", utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 		}
 
-		dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s", utils.ShellQuote(deployFile.RemoteFileOwner), utils.ShellQuote(deployFile.RemoteFilePath)), nil)
+		_, _ = dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s", utils.ShellQuote(deployFile.RemoteFileOwner), utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 	}
 
 	// Create SSH config for GitHub
@@ -449,16 +449,16 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 		return fmt.Errorf("creating temp SSH config: %w", err)
 	}
 	if _, err := sshConfigFile.Write([]byte(sshConfigContent)); err != nil {
-		sshConfigFile.Close()
+		_ = sshConfigFile.Close()
 		return fmt.Errorf("writing SSH config: %w", err)
 	}
-	sshConfigFile.Close()
-	dh.runSudo(client, fmt.Sprintf("mv %s %s", utils.ShellQuote(sshConfigTmpPath), utils.ShellQuote(remoteSSHConfigPath)), nil)
-	dh.runSudo(client, fmt.Sprintf("chmod 600 %s", utils.ShellQuote(remoteSSHConfigPath)), nil)
-	dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(remoteSSHConfigPath)), nil)
+	_ = sshConfigFile.Close()
+	_, _ = dh.runSudo(client, fmt.Sprintf("mv %s %s", utils.ShellQuote(sshConfigTmpPath), utils.ShellQuote(remoteSSHConfigPath)), nil)
+	_, _ = dh.runSudo(client, fmt.Sprintf("chmod 600 %s", utils.ShellQuote(remoteSSHConfigPath)), nil)
+	_, _ = dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(remoteSSHConfigPath)), nil)
 
 	// Final recursive chown — mv via sudo creates root-owned dirs
-	dh.runSudo(client, fmt.Sprintf("chown -R %s:%[1]s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir)), nil)
+	_, _ = dh.runSudo(client, fmt.Sprintf("chown -R %s:%[1]s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir)), nil)
 
 	return nil
 }

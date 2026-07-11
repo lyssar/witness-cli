@@ -103,7 +103,9 @@ func DecryptSecret(encryptedData string, keyPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("could not open key file: %w", err)
 	}
-	defer keyFile.Close()
+	defer func() {
+		_ = keyFile.Close()
+	}()
 
 	identities, err := age.ParseIdentities(keyFile)
 	if err != nil {

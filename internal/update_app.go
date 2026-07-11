@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func UpdateAppCmd(cmd *cobra.Command) error {
+func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 	var manifestPath string
 
 	err := huh.NewInput().
@@ -96,7 +96,9 @@ func UpdateAppCmd(cmd *cobra.Command) error {
 
 	f, err := os.Create(manifestPath)
 	utils.CheckErr(err)
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	if err := renderer.Render("application", &app, f); err != nil {
 		return fmt.Errorf("rendering manifest: %w", err)

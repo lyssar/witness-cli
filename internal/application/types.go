@@ -33,10 +33,10 @@ type Metadata struct {
 
 // Spec stores the application runtime contract.
 type Spec struct {
-	Provisioner         string                `yaml:"provisioner"`
-	ComposeFiles        []string              `yaml:"composeFiles"`
-	Secrets             []Secret              `yaml:"secrets,omitempty"`
-	RegistryCredentials *RegistryCredentials  `yaml:"registryCredentials,omitempty"`
+	Provisioner         string               `yaml:"provisioner"`
+	ComposeFiles        []string             `yaml:"composeFiles"`
+	Secrets             []Secret             `yaml:"secrets,omitempty"`
+	RegistryCredentials *RegistryCredentials `yaml:"registryCredentials,omitempty"`
 }
 
 // RegistryCredentials stores encrypted docker registry authentication.
