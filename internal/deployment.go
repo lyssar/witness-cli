@@ -172,11 +172,17 @@ func (dh *DeployHandler) Validate() error {
 
 	stdOut, stdErr := remoteClient.SSH.Run(fmt.Sprintf("id -u %s", utils.ShellQuote(observer.Metadata.User)))
 
-	if stdErr != nil {
-		if strings.Contains(string(stdOut), "no such user") {
-			return fmt.Errorf("user [%s] is missing on the remote system", observer.Metadata.User)
-		}
-		return fmt.Errorf("%s (%s)", string(stdOut), stdErr.Error())
+	if stdErr != nil || strings.Contains(string(stdOut), "no such user") {
+		utils.LogInfo("Creating user on remote host", "user", observer.Metadata.User)
+		// Create user with docker group membership in one command
+		_, _ = dh.runSudo(remoteClient, fmt.Sprintf(
+			"useradd --create-home --shell /bin/bash -G docker %s",
+			utils.ShellQuote(observer.Metadata.User),
+		), nil)
+	} else {
+		// User exists — ensure docker group membership
+		utils.LogInfo("Adding user to docker group", "user", observer.Metadata.User)
+		dh.runSudo(remoteClient, fmt.Sprintf("usermod -aG docker %s", utils.ShellQuote(observer.Metadata.User)), nil)
 	}
 
 	serviceName := strings.ToLower(observer.Metadata.Name)

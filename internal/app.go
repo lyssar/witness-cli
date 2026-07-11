@@ -21,9 +21,16 @@ type v1Secret struct {
 }
 
 type AppSpec struct {
-	Provisioner  string     `yaml:"-"`
-	ComposeFiles []string   `yaml:"composeFiles"`
-	Secrets      []v1Secret `yaml:"secrets,omitempty"`
+	Provisioner         string               `yaml:"-"`
+	ComposeFiles        []string             `yaml:"composeFiles"`
+	Secrets             []v1Secret           `yaml:"secrets,omitempty"`
+	RegistryCredentials *v1RegistryCredentials `yaml:"registryCredentials,omitempty"`
+}
+
+type v1RegistryCredentials struct {
+	Registry string `yaml:"registry"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"` // age-encrypted
 }
 
 type App struct {
@@ -186,6 +193,47 @@ func (app *App) Configure() {
 				break
 			}
 		}
+	}
+
+	var addRegistry bool
+	err = huh.NewConfirm().
+		Title("Add private registry credentials?").
+		Description("Registry credentials allow pulling images from private Docker registries").
+		Value(&addRegistry).
+		Run()
+	utils.CheckErr(err)
+
+	if addRegistry {
+		var creds v1RegistryCredentials
+
+		err = huh.NewInput().
+			Title("Registry URL").
+			Description("Docker registry URL (e.g., docker.io, ghcr.io)").
+			Validate(huh.ValidateNotEmpty()).
+			Value(&creds.Registry).
+			Run()
+		utils.CheckErr(err)
+
+		err = huh.NewInput().
+			Title("Registry username").
+			Validate(huh.ValidateNotEmpty()).
+			Value(&creds.Username).
+			Run()
+		utils.CheckErr(err)
+
+		err = huh.NewInput().
+			Title("Registry password").
+			EchoMode(huh.EchoModePassword).
+			Validate(huh.ValidateNotEmpty()).
+			Value(&creds.Password).
+			Run()
+		utils.CheckErr(err)
+
+		encryptedPassword, err := utils.EncryptSecret(creds.Password, app.AgeKeyFile)
+		utils.CheckErr(err)
+		creds.Password = encryptedPassword
+
+		app.Spec.RegistryCredentials = &creds
 	}
 }
 

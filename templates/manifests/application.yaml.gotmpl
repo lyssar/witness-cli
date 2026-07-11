@@ -17,4 +17,10 @@ spec:
       decryptor: {{ .Decryptor }}
 {{- end }}
 {{- end }}
+{{- if .Spec.RegistryCredentials }}
+  registryCredentials:
+    registry: {{ .Spec.RegistryCredentials.Registry }}
+    username: {{ .Spec.RegistryCredentials.Username }}
+    password: {{ .Spec.RegistryCredentials.Password }}
+{{- end }}
 {{- end -}}

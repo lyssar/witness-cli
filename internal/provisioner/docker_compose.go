@@ -13,6 +13,7 @@ import (
 // CommandRunner executes provisioner commands.
 type CommandRunner interface {
 	Run(ctx context.Context, dir string, name string, args ...string) error
+	RunWithStdin(ctx context.Context, dir string, stdin string, name string, args ...string) error
 }
 
 // DockerCompose applies and deletes docker-compose applications.
@@ -46,7 +47,37 @@ func (p *DockerCompose) Apply(ctx context.Context, runtime RuntimeContext, app a
 	if err := p.validateRuntime(runtime, app); err != nil {
 		return err
 	}
+
+	// Handle registry credentials if present
+	if app.Spec.RegistryCredentials != nil && runtime.RegistryPasswordPath != "" {
+		if err := p.dockerLogin(ctx, runtime, app); err != nil {
+			return fmt.Errorf("docker login failed: %w", err)
+		}
+	}
+
 	return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, "up", "--detach", "--remove-orphans")...)
+}
+
+// dockerLogin authenticates with the docker registry before pulling images.
+func (p *DockerCompose) dockerLogin(ctx context.Context, runtime RuntimeContext, app application.Application) error {
+	creds := app.Spec.RegistryCredentials
+
+	// Read decrypted password from temp file
+	passwordBytes, err := os.ReadFile(runtime.RegistryPasswordPath)
+	if err != nil {
+		return fmt.Errorf("reading registry password: %w", err)
+	}
+	password := strings.TrimSpace(string(passwordBytes))
+
+	// Run docker login
+	args := []string{
+		"login",
+		"--username", creds.Username,
+		"--password-stdin",
+		creds.Registry,
+	}
+
+	return p.runner.RunWithStdin(ctx, runtime.LiveDir, password, "docker", args...)
 }
 
 // Delete tears down the compose project using the archived or live app directory.

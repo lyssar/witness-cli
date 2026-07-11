@@ -13,7 +13,8 @@ import (
 
 // AppStaging holds one app staging tree.
 type AppStaging struct {
-	Root string
+	Root                 string
+	RegistryPasswordPath string // path to decrypted registry password
 }
 
 func buildAppStaging(ctx context.Context, ageKeyPath string, decryptors map[string]decryptor.Decryptor, app application.DiscoveredApplication, fileset application.FileSet) (AppStaging, func() error, error) {
@@ -23,6 +24,11 @@ func buildAppStaging(ctx context.Context, ageKeyPath string, decryptors map[stri
 	}
 
 	cleanup := func() error {
+		// Clean up registry password temp file if it exists
+		staging := AppStaging{Root: root}
+		if staging.RegistryPasswordPath != "" {
+			_ = os.Remove(staging.RegistryPasswordPath)
+		}
 		return os.RemoveAll(root)
 	}
 
@@ -46,7 +52,18 @@ func buildAppStaging(ctx context.Context, ageKeyPath string, decryptors map[stri
 		return AppStaging{}, nil, err
 	}
 
-	return AppStaging{Root: root}, cleanup, nil
+	// Decrypt registry credentials if present
+	var registryPasswordPath string
+	if app.Application.Spec.RegistryCredentials != nil && app.Application.Spec.RegistryCredentials.Password != "" {
+		path, err := stageRegistryPassword(ctx, ageKeyPath, decryptors, root, app)
+		if err != nil {
+			_ = cleanup()
+			return AppStaging{}, nil, err
+		}
+		registryPasswordPath = path
+	}
+
+	return AppStaging{Root: root, RegistryPasswordPath: registryPasswordPath}, cleanup, nil
 }
 
 func stageSecrets(ctx context.Context, ageKeyPath string, decryptors map[string]decryptor.Decryptor, root string, app application.DiscoveredApplication) error {
@@ -68,6 +85,40 @@ func stageSecrets(ctx context.Context, ageKeyPath string, decryptors map[string]
 	}
 
 	return nil
+}
+
+func stageRegistryPassword(ctx context.Context, ageKeyPath string, decryptors map[string]decryptor.Decryptor, root string, app application.DiscoveredApplication) (string, error) {
+	creds := app.Application.Spec.RegistryCredentials
+	if creds == nil || creds.Password == "" {
+		return "", nil
+	}
+
+	decrypt := decryptors[application.DecryptorAge]
+	if decrypt == nil {
+		return "", fmt.Errorf("decryptor %q is required for registry credentials", application.DecryptorAge)
+	}
+
+	// Write encrypted password to temp file for decryption
+	encryptedPath := filepath.Join(root, ".registry-password-encrypted")
+	if err := os.WriteFile(encryptedPath, []byte(creds.Password), 0o600); err != nil {
+		return "", fmt.Errorf("writing encrypted registry password: %w", err)
+	}
+
+	// Decrypt to target path
+	targetPath := filepath.Join(root, ".registry-password")
+	if err := decrypt.DecryptFile(ctx, decryptor.Request{
+		OperationalID: app.OperationalID,
+		KeyPath:       ageKeyPath,
+		SourcePath:    encryptedPath,
+		TargetPath:    targetPath,
+	}); err != nil {
+		return "", fmt.Errorf("decrypting registry password: %w", err)
+	}
+
+	// Remove encrypted temp file
+	_ = os.Remove(encryptedPath)
+
+	return targetPath, nil
 }
 
 func copyFileWithMode(sourcePath, destinationPath string) error {

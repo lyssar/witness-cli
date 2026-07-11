@@ -52,12 +52,18 @@ type recordingRunner struct {
 }
 
 type runnerCall struct {
-	dir  string
-	name string
-	args []string
+	dir    string
+	name   string
+	args   []string
+	stdin  string
 }
 
 func (r *recordingRunner) Run(_ context.Context, dir string, name string, args ...string) error {
 	r.calls = append(r.calls, runnerCall{dir: dir, name: name, args: append([]string(nil), args...)})
+	return nil
+}
+
+func (r *recordingRunner) RunWithStdin(_ context.Context, dir string, stdin string, name string, args ...string) error {
+	r.calls = append(r.calls, runnerCall{dir: dir, name: name, args: append([]string(nil), args...), stdin: stdin})
 	return nil
 }

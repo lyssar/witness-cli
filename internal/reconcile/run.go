@@ -353,10 +353,11 @@ func (r *Runner) applyApp(ctx context.Context, destinationRoot string, runtime a
 	}
 	runtime.staging.Root = liveDir
 	runtimeRuntime := provisioner.RuntimeContext{
-		OperationalID: runtime.app.OperationalID,
-		RuntimeSlug:   runtime.app.RuntimeSlug,
-		LiveDir:       liveDir,
-		SourceDir:     runtime.app.SourceDir,
+		OperationalID:        runtime.app.OperationalID,
+		RuntimeSlug:          runtime.app.RuntimeSlug,
+		LiveDir:              liveDir,
+		SourceDir:            runtime.app.SourceDir,
+		RegistryPasswordPath: runtime.staging.RegistryPasswordPath,
 	}
 	if err := p.Apply(ctx, runtimeRuntime, runtime.app.Application); err != nil {
 		return fmt.Errorf("applying provisioner %q: %w", p.Name(), err)
