@@ -58,9 +58,9 @@ func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parsing manifest: %w", err)
 	}
 
-	// === Validate and fix required fields ===
+	// === Fix required fields ===
+	changed := false
 
-	// Provisioner — required
 	if app.Spec.Provisioner == "" {
 		err = huh.NewSelect[string]().
 			Title("Provisioner is missing — select one").
@@ -70,9 +70,9 @@ func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 			Value(&app.Spec.Provisioner).
 			Run()
 		utils.CheckErr(err)
+		changed = true
 	}
 
-	// ComposeFiles — required, must have at least one
 	if len(app.Spec.ComposeFiles) == 0 {
 		var composeFile string
 		err = huh.NewInput().
@@ -83,6 +83,15 @@ func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 			Run()
 		utils.CheckErr(err)
 		app.Spec.ComposeFiles = append(app.Spec.ComposeFiles, composeFile)
+		changed = true
+	}
+
+	// Write required fixes immediately
+	if changed {
+		if err := validateAndWrite(manifestPath, &app); err != nil {
+			return err
+		}
+		utils.LogSuccess(fmt.Sprintf("Fixed required fields in %s", manifestPath))
 	}
 
 	utils.LogInfo("Current manifest",
@@ -93,20 +102,17 @@ func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 		"registry", app.Spec.RegistryCredentials != nil,
 	)
 
-	// === Ask what to update ===
-	var actions []string
-	actionOptions := []huh.Option[string]{
-		huh.NewOption("Update registry credentials", "registry"),
-		huh.NewOption("Add secret", "secret"),
-		huh.NewOption("Add compose file", "compose"),
-		huh.NewOption("Done", "done"),
-	}
-
+	// === Optional changes loop ===
 	for {
 		var action string
 		err = huh.NewSelect[string]().
-			Title("What do you want to do?").
-			Options(actionOptions...).
+			Title("Anything else to update?").
+			Options(
+				huh.NewOption("Update registry credentials", "registry"),
+				huh.NewOption("Add secret", "secret"),
+				huh.NewOption("Add compose file", "compose"),
+				huh.NewOption("No, done", "done"),
+			).
 			Value(&action).
 			Run()
 		utils.CheckErr(err)
@@ -117,51 +123,42 @@ func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 
 		switch action {
 		case "registry":
-			if err := updateRegistryCredentials(&app, ageKey); err != nil {
-				return err
-			}
+			utils.CheckErr(updateRegistryCredentials(&app, ageKey))
 		case "secret":
-			if err := addSecret(&app); err != nil {
-				return err
-			}
+			utils.CheckErr(addSecret(&app))
 		case "compose":
-			if err := addComposeFile(&app); err != nil {
-				return err
-			}
+			utils.CheckErr(addComposeFile(&app))
 		}
 
-		actions = append(actions, action)
+		utils.CheckErr(validateAndWrite(manifestPath, &app))
+		utils.LogSuccess(fmt.Sprintf("Updated %s", manifestPath))
 	}
 
-	if len(actions) == 0 {
-		utils.LogInfo("No changes made")
-		return nil
-	}
+	return nil
+}
 
-	// === Validate before writing ===
-	if err := validateAppManifest(&app); err != nil {
+func validateAndWrite(manifestPath string, app *App) error {
+	if err := validateAppManifest(app); err != nil {
 		return fmt.Errorf("manifest invalid, not writing: %w", err)
 	}
 
-	// === Write ===
 	renderer, err := templates.NewRenderer()
-	utils.CheckErr(err)
+	if err != nil {
+		return err
+	}
 
 	f, err := os.Create(manifestPath)
-	utils.CheckErr(err)
+	if err != nil {
+		return err
+	}
 	defer func() {
 		_ = f.Close()
 	}()
 
-	if err := renderer.Render("application", &app, f); err != nil {
+	if err := renderer.Render("application", app, f); err != nil {
 		return fmt.Errorf("rendering manifest: %w", err)
 	}
-	if err := f.Sync(); err != nil {
-		return fmt.Errorf("syncing manifest: %w", err)
-	}
-
-	utils.LogSuccess(fmt.Sprintf("Updated %s (%d changes)", manifestPath, len(actions)))
-	return nil
+	return f.Sync()
 }
 
 func validateAppManifest(app *App) error {
