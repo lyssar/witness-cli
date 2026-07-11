@@ -10,10 +10,12 @@ User={{ .Observer.Metadata.User }}
 Group={{ .Observer.Metadata.User }}
 WorkingDirectory={{ .ObserverConfigPath }}
 ExecStart=/usr/local/bin/witness reconcile {{ .ObserverConfigPath }}
+StandardOutput=journal
+StandardError=journal
 
 # Security hardening
 ProtectSystem=strict
-ProtectHome=yes
+ProtectHome=read-only
 PrivateTmp=yes
 NoNewPrivileges=yes
 CapabilityBoundingSet=~CAP_SYS_ADMIN CAP_NET_ADMIN CAP_SYS_PTRACE
