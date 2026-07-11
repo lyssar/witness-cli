@@ -359,24 +359,31 @@ func (r *Runner) applyApp(ctx context.Context, destinationRoot string, runtime a
 		registryPasswordPath = filepath.Join(liveDir, filepath.Base(runtime.staging.RegistryPasswordPath))
 	}
 
-	// Determine if compose files drifted — this decides whether we need
-	// docker compose up (recreate) vs just restart.
-	composeFilesChanged := false
+	// Determine what changed — this decides the docker compose strategy:
+	// - compose files changed → docker compose up --detach (Docker detects changes)
+	// - secrets changed → docker compose up --detach --force-recreate (Docker can't detect secret file changes)
+	// - neither → should not happen (apply only runs on drift)
 	composeSet := make(map[string]struct{}, len(runtime.app.Application.Spec.ComposeFiles))
 	for _, cf := range runtime.app.Application.Spec.ComposeFiles {
 		composeSet[cf] = struct{}{}
 	}
-	for _, changed := range runtime.drift.Changed {
-		if _, ok := composeSet[changed]; ok {
-			composeFilesChanged = true
-			break
-		}
+	secretSourceSet := make(map[string]struct{}, len(runtime.app.Application.Spec.Secrets))
+	for _, secret := range runtime.app.Application.Spec.Secrets {
+		secretSourceSet[filepath.ToSlash(filepath.Clean(secret.Source))] = struct{}{}
 	}
-	if !composeFilesChanged {
-		for _, missing := range runtime.drift.Missing {
-			if _, ok := composeSet[missing]; ok {
+
+	composeFilesChanged := false
+	secretsChanged := false
+	allChanged := append(append([]string(nil), runtime.drift.Changed...), runtime.drift.Missing...)
+	for _, f := range allChanged {
+		if !composeFilesChanged {
+			if _, ok := composeSet[f]; ok {
 				composeFilesChanged = true
-				break
+			}
+		}
+		if !secretsChanged {
+			if _, ok := secretSourceSet[f]; ok {
+				secretsChanged = true
 			}
 		}
 	}
@@ -388,6 +395,7 @@ func (r *Runner) applyApp(ctx context.Context, destinationRoot string, runtime a
 		SourceDir:            runtime.app.SourceDir,
 		RegistryPasswordPath: registryPasswordPath,
 		ComposeFilesChanged:  composeFilesChanged,
+		SecretsChanged:       secretsChanged,
 	}
 	if err := p.Apply(ctx, runtimeRuntime, runtime.app.Application); err != nil {
 		return fmt.Errorf("applying provisioner %q: %w", p.Name(), err)

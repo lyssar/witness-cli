@@ -55,11 +55,17 @@ func (p *DockerCompose) Apply(ctx context.Context, runtime RuntimeContext, app a
 		}
 	}
 
-	// Compose file changes need up (recreate), secret-only changes just need restart.
-	if runtime.ComposeFilesChanged {
+	// Compose file changes: Docker detects them and recreates as needed.
+	// Secret-only changes: Docker can't detect secret file content changes,
+	// so we need --force-recreate to re-mount Docker secrets.
+	switch {
+	case runtime.ComposeFilesChanged:
 		return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, "up", "--detach", "--remove-orphans")...)
+	case runtime.SecretsChanged:
+		return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, "up", "--detach", "--remove-orphans", "--force-recreate")...)
+	default:
+		return nil
 	}
-	return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, "restart")...)
 }
 
 // dockerLogin authenticates with the docker registry before pulling images.

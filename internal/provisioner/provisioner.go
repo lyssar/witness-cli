@@ -13,7 +13,8 @@ type RuntimeContext struct {
 	LiveDir              string
 	SourceDir            string
 	RegistryPasswordPath string // path to decrypted registry password file
-	ComposeFilesChanged  bool   // true when compose files drifted — triggers full recreate
+	ComposeFilesChanged  bool   // true when compose files drifted — triggers up
+	SecretsChanged       bool   // true when secret sources drifted — triggers up --force-recreate
 }
 
 // Provisioner defines the runtime contract used by reconcile orchestration.
