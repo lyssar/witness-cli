@@ -11,6 +11,6 @@ spec:
     path: {{ .Spec.Source.Path }}
     repoURL: {{ .Spec.Source.RepoURL }}
     user: {{ .Spec.Source.User }}
-    accessToken: {{ encryptSecret $.Spec.Source.AccessToken $.AgeKeyFile}}
+    sshKey: {{ encryptSecret $.Spec.Source.SSHKey $.AgeKeyFile}}
     targetRevision: {{ if .Spec.Source.TargetRevision }}{{ .Spec.Source.TargetRevision }}{{ else }}HEAD{{ end }}
 {{- end }}

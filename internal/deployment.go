@@ -306,6 +306,21 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 		return fmt.Errorf("error get manifest file content: %s", err)
 	}
 
+	// Decrypt SSH key and prepare for deployment
+	sshKeyContent, err := utils.DecryptSecret(observer.Spec.Source.SSHKey, dh.AgeFilePath)
+	if err != nil {
+		return fmt.Errorf("decrypting SSH key: %w", err)
+	}
+
+	// Determine SSH key filename from original path or use default
+	sshKeyFilename := "id_ed25519"
+	if observer.Spec.Source.SSHKey != "" {
+		// Try to get filename from the original path stored in manifest
+		// Since we stored content, we need to use a default name
+		sshKeyFilename = "id_ed25519"
+	}
+	remoteSSHKeyPath := fmt.Sprintf("/home/%s/.ssh/%s", observer.Metadata.User, sshKeyFilename)
+
 	deployFileList := []DeployFile{
 		{
 			TemplateName:    "service",
@@ -329,6 +344,12 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 			TemplateName:    "direct",
 			Content:         ageKeyData,
 			RemoteFilePath:  remoteAgeFilePath,
+			RemoteFileOwner: observer.Metadata.User,
+		},
+		{
+			TemplateName:    "direct",
+			Content:         []byte(sshKeyContent),
+			RemoteFilePath:  remoteSSHKeyPath,
 			RemoteFileOwner: observer.Metadata.User,
 		},
 	}
@@ -403,8 +424,32 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 			dh.runSudo(client, fmt.Sprintf("chmod 600 %s", utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 		}
 
+		if filepath.Base(deployFile.RemoteFilePath) == sshKeyFilename {
+			dh.runSudo(client, fmt.Sprintf("chmod 600 %s", utils.ShellQuote(deployFile.RemoteFilePath)), nil)
+		}
+
 		dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s", utils.ShellQuote(deployFile.RemoteFileOwner), utils.ShellQuote(deployFile.RemoteFilePath)), nil)
 	}
+
+	// Create SSH config for GitHub
+	sshConfigContent := fmt.Sprintf(`Host github.com
+  IdentityFile /home/%s/.ssh/%s
+  User git
+`, observer.Metadata.User, sshKeyFilename)
+	remoteSSHConfigPath := fmt.Sprintf("/home/%s/.ssh/config", observer.Metadata.User)
+	sshConfigTmpPath := path.Join(tmpRemoteDir, "config")
+	sshConfigFile, err := sftp.Create(sshConfigTmpPath)
+	if err != nil {
+		return fmt.Errorf("creating temp SSH config: %w", err)
+	}
+	if _, err := sshConfigFile.Write([]byte(sshConfigContent)); err != nil {
+		sshConfigFile.Close()
+		return fmt.Errorf("writing SSH config: %w", err)
+	}
+	sshConfigFile.Close()
+	dh.runSudo(client, fmt.Sprintf("mv %s %s", utils.ShellQuote(sshConfigTmpPath), utils.ShellQuote(remoteSSHConfigPath)), nil)
+	dh.runSudo(client, fmt.Sprintf("chmod 600 %s", utils.ShellQuote(remoteSSHConfigPath)), nil)
+	dh.runSudo(client, fmt.Sprintf("chown %s:%[1]s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(remoteSSHConfigPath)), nil)
 
 	// Final recursive chown — mv via sudo creates root-owned dirs
 	dh.runSudo(client, fmt.Sprintf("chown -R %s:%[1]s %s", utils.ShellQuote(observer.Metadata.User), utils.ShellQuote(observerUserHomeConfigDir)), nil)

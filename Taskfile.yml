@@ -139,7 +139,7 @@ tasks:
           '    targetRevision: main' \
           '    path: {{.LOCAL_SOURCE_PATH}}' \
           '    user: harness' \
-          '    accessToken: unused' \
+          '    sshKey: placeholder' \
           '  timeout:' \
           '    reconciliation: 30s' \
           >"{{.LOCAL_MANIFEST_PATH}}"

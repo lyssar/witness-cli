@@ -11,8 +11,8 @@ var initCmd = &cobra.Command{
 	Long: `Creates an Observer manifest YAML file interactively.
 
 Prompts for the observer name, execution user, destination path,
-git repository URL, target revision, credentials, and age key path.
-The access token is encrypted with age in the output manifest.
+git repository URL, target revision, SSH private key path, and age key path.
+The SSH private key content is encrypted with age in the output manifest.
 
 When --local is set, creates a complete config root directory containing
 manifest.yaml and a generated age.key, ready for use with reconcile.`,

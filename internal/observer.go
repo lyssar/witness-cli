@@ -23,7 +23,7 @@ type GitSource struct {
 	TargetRevision string `default:"HEAD" yaml:"targetRevision"`
 	Path           string `default:"/" yaml:"path"`
 	User           string `yaml:"user"`
-	AccessToken    string `yaml:"accessToken"`
+	SSHKey         string `yaml:"sshKey"`
 }
 
 type Metadata struct {
@@ -236,13 +236,15 @@ func (observer *Observer) Configure() {
 	utils.CheckErr(err)
 
 	err = huh.NewInput().
-		Title("Git access token").
-		Description("The access token to use fetch changes on reconcilation").
-		EchoMode(huh.EchoModePassword).
-		Value(&observer.Spec.Source.AccessToken).
-		Validate(func(gitAccessToken string) error {
-			if len(gitAccessToken) <= 0 {
-				return errors.New("you must enter a git access token")
+		Title("SSH private key path").
+		Description("Path to the SSH private key for git access (will be encrypted with age)").
+		Value(&observer.Spec.Source.SSHKey).
+		Validate(func(sshKeyPath string) error {
+			if len(sshKeyPath) <= 0 {
+				return errors.New("you must enter a path to the SSH private key")
+			}
+			if !utils.FileExists(sshKeyPath) {
+				return errors.New("SSH key file does not exist")
 			}
 			return nil
 		}).
@@ -274,6 +276,14 @@ func (observer *Observer) Configure() {
 }
 
 func (observer *Observer) WriteConfig() {
+	// Read SSH key content before rendering template
+	sshKeyContent, err := os.ReadFile(observer.Spec.Source.SSHKey)
+	if err != nil {
+		utils.CheckErr(fmt.Errorf("reading SSH key file: %w", err))
+	}
+	// Store raw content for template encryption
+	observer.Spec.Source.SSHKey = string(sshKeyContent)
+
 	renderer, err := templates.NewRenderer()
 	utils.CheckErr(err)
 
@@ -328,6 +338,14 @@ func (observer *Observer) WriteConfigRoot() error {
 	}
 
 	observer.AgeKeyFile = ageKeyPath
+
+	// Read SSH key content before rendering template
+	sshKeyContent, err := os.ReadFile(observer.Spec.Source.SSHKey)
+	if err != nil {
+		return fmt.Errorf("reading SSH key file: %w", err)
+	}
+	// Store raw content for template encryption
+	observer.Spec.Source.SSHKey = string(sshKeyContent)
 
 	renderer, err := templates.NewRenderer()
 	if err != nil {

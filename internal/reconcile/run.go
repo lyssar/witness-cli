@@ -415,6 +415,7 @@ type observerSource struct {
 	RepoURL        string `yaml:"repoURL"`
 	TargetRevision string `yaml:"targetRevision"`
 	Path           string `yaml:"path"`
+	SSHKey         string `yaml:"sshKey"`
 }
 
 func loadManifest(manifestPath string) (observerManifest, error) {

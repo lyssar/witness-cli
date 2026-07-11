@@ -154,7 +154,7 @@ spec:
     path: apps
     repoURL: https://github.com/my-org/my-infra-repo.git
     user: git-user
-    accessToken: <encrypted>
+    sshKey: <encrypted>
     targetRevision: main
 ```
 

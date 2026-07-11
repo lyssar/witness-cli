@@ -22,6 +22,7 @@ type validatedManifestSource struct {
 	targetRevision string
 	path           string
 	destination    string
+	sshKey         string
 }
 
 func (r *Runner) validateRun(ctx context.Context) (runnerValidation, error) {
@@ -107,10 +108,16 @@ func validateObserverManifest(manifest observerManifest) (validatedManifestSourc
 		return validatedManifestSource{}, errors.New("manifest spec.destination must be absolute")
 	}
 
+	sshKey := strings.TrimSpace(manifest.Spec.Source.SSHKey)
+	if sshKey == "" {
+		return validatedManifestSource{}, errors.New("manifest spec.source.sshKey is required")
+	}
+
 	return validatedManifestSource{
 		repoURL:        repoURL,
 		targetRevision: targetRevision,
 		path:           manifest.Spec.Source.Path,
 		destination:    filepath.Clean(destination),
+		sshKey:         sshKey,
 	}, nil
 }

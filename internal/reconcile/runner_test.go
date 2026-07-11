@@ -127,6 +127,25 @@ func TestRunnerRunValidationErrors(t *testing.T) {
 			t.Fatalf("expected destination absolute error, got %v", err)
 		}
 	})
+
+	t.Run("ssh key required", func(t *testing.T) {
+		configRoot := t.TempDir()
+		manifest := "apiVersion: witness/v1alpha1\n" +
+			"kind: Observer\n" +
+			"spec:\n" +
+			"  destination: /tmp/witness\n" +
+			"  source:\n" +
+			"    repoURL: https://example.com/repo.git\n" +
+			"    targetRevision: HEAD\n" +
+			"    path: /\n"
+		writeFile(t, filepath.Join(configRoot, "manifest.yaml"), manifest)
+		writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
+
+		err := NewRunner(configRoot).Run(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "manifest spec.source.sshKey is required") {
+			t.Fatalf("expected ssh key required error, got %v", err)
+		}
+	})
 }
 
 func TestResolveDiscoveryRoot(t *testing.T) {
@@ -260,7 +279,8 @@ func minimalManifest(repoURL, targetRevision, sourcePath, destination string) st
 		"  source:\n" +
 		"    repoURL: " + repoURL + "\n" +
 		"    targetRevision: " + targetRevision + "\n" +
-		"    path: " + sourcePath + "\n"
+		"    path: " + sourcePath + "\n" +
+		"    sshKey: ssh-key-placeholder\n"
 }
 
 func writeFile(t *testing.T, path, content string) {

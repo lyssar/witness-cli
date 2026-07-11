@@ -86,3 +86,40 @@ func EncryptSecret(ciphertext string, key string) (string, error) {
 
 	return base64.StdEncoding.EncodeToString([]byte(cipher)), nil
 }
+
+func DecryptSecret(encryptedData string, keyPath string) (string, error) {
+	if strings.TrimSpace(encryptedData) == "" || keyPath == "" {
+		return "", nil
+	}
+
+	// Decode base64
+	decoded, err := base64.StdEncoding.DecodeString(encryptedData)
+	if err != nil {
+		return "", fmt.Errorf("base64 decode error: %w", err)
+	}
+
+	// Read identity from key file
+	keyFile, err := os.Open(keyPath)
+	if err != nil {
+		return "", fmt.Errorf("could not open key file: %w", err)
+	}
+	defer keyFile.Close()
+
+	identities, err := age.ParseIdentities(keyFile)
+	if err != nil {
+		return "", fmt.Errorf("could not parse age identities: %w", err)
+	}
+
+	// Decrypt
+	decryptedReader, err := age.Decrypt(bytes.NewReader(decoded), identities...)
+	if err != nil {
+		return "", fmt.Errorf("decryption error: %w", err)
+	}
+
+	decrypted, err := io.ReadAll(decryptedReader)
+	if err != nil {
+		return "", fmt.Errorf("reading decrypted data: %w", err)
+	}
+
+	return string(decrypted), nil
+}
