@@ -30,8 +30,8 @@ func TestBuildFileSet(t *testing.T) {
 		t.Fatalf("build fileset: %v", err)
 	}
 
-	if len(fileset.ManagedFiles) != 3 {
-		t.Fatalf("expected 3 managed files (.witnessignore + compose + secret source), got %d", len(fileset.ManagedFiles))
+	if len(fileset.ManagedFiles) != 2 {
+		t.Fatalf("expected 2 managed files (.witnessignore + compose), got %d", len(fileset.ManagedFiles))
 	}
 	if len(fileset.DeferredSecretTargets) != 1 || fileset.DeferredSecretTargets[0] != "secrets/.env" {
 		t.Fatalf("unexpected deferred secret targets: %#v", fileset.DeferredSecretTargets)

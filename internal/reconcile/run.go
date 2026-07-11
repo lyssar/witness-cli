@@ -230,6 +230,13 @@ func (r *Runner) Run(ctx context.Context) error {
 
 		currentState := stateFile.Applications[app.OperationalID]
 		needsApply := appEntry.drift.HasDrift || currentState.Status == state.StatusFailed || currentState.Status == state.StatusDeleting
+		// If the commit changed and the app has secrets, force re-apply to re-decrypt
+		// secrets. Secret source files are excluded from ManagedFiles (they are not copied
+		// to the live directory), so drift detection won't catch secret changes. Instead,
+		// any new commit on an app with secrets triggers a fresh decrypt cycle.
+		if !needsApply && resolvedCommit != currentState.LastSuccessfulResolvedCommit && len(app.Application.Spec.Secrets) > 0 {
+			needsApply = true
+		}
 		if !needsApply {
 			currentState = desiredStateEntry(now, app, resolvedCommit)
 			currentState.LastError = ""

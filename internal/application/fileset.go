@@ -129,6 +129,10 @@ func BuildFileSet(app DiscoveredApplication, submodulePaths []string) (FileSet, 
 			return fmt.Errorf("unsupported file type at %q", relSlash)
 		}
 
+		if _, isSecretSource := secretSources[relSlash]; isSecretSource {
+			return nil
+		}
+
 		managedByPath[relSlash] = ManagedFile{RelativePath: relSlash, SourcePath: path}
 		return nil
 	})
