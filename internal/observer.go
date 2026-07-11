@@ -111,6 +111,13 @@ func NewObserverFromManifest(manifestFile, ageKeyFile string) (Observer, error) 
 		return *observer, err
 	}
 
+	// Apply struct defaults for fields not set in YAML — without this,
+	// zero-valued durations (e.g. timeout.reconciliation) cause the
+	// systemd timer to fire at the 30s minimum interval.
+	if err := defaults.Set(observer); err != nil {
+		return *observer, fmt.Errorf("applying defaults: %w", err)
+	}
+
 	return *observer, nil
 }
 
