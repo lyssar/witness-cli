@@ -21,7 +21,7 @@ func TestDockerComposeCommands(t *testing.T) {
 	runner := &recordingRunner{}
 	provisioner := NewDockerCompose(runner)
 	app := application.Application{Spec: application.Spec{ComposeFiles: []string{"compose.yaml"}}}
-	runtime := RuntimeContext{RuntimeSlug: "apps-hello", LiveDir: root}
+	runtime := RuntimeContext{RuntimeSlug: "apps-hello", LiveDir: root, ComposeFilesChanged: true}
 
 	if err := provisioner.Validate(context.Background(), runtime, app); err != nil {
 		t.Fatalf("validate: %v", err)

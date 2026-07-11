@@ -359,12 +359,35 @@ func (r *Runner) applyApp(ctx context.Context, destinationRoot string, runtime a
 		registryPasswordPath = filepath.Join(liveDir, filepath.Base(runtime.staging.RegistryPasswordPath))
 	}
 
+	// Determine if compose files drifted — this decides whether we need
+	// docker compose up (recreate) vs just restart.
+	composeFilesChanged := false
+	composeSet := make(map[string]struct{}, len(runtime.app.Application.Spec.ComposeFiles))
+	for _, cf := range runtime.app.Application.Spec.ComposeFiles {
+		composeSet[cf] = struct{}{}
+	}
+	for _, changed := range runtime.drift.Changed {
+		if _, ok := composeSet[changed]; ok {
+			composeFilesChanged = true
+			break
+		}
+	}
+	if !composeFilesChanged {
+		for _, missing := range runtime.drift.Missing {
+			if _, ok := composeSet[missing]; ok {
+				composeFilesChanged = true
+				break
+			}
+		}
+	}
+
 	runtimeRuntime := provisioner.RuntimeContext{
 		OperationalID:        runtime.app.OperationalID,
 		RuntimeSlug:          runtime.app.RuntimeSlug,
 		LiveDir:              liveDir,
 		SourceDir:            runtime.app.SourceDir,
 		RegistryPasswordPath: registryPasswordPath,
+		ComposeFilesChanged:  composeFilesChanged,
 	}
 	if err := p.Apply(ctx, runtimeRuntime, runtime.app.Application); err != nil {
 		return fmt.Errorf("applying provisioner %q: %w", p.Name(), err)

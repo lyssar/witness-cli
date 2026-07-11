@@ -55,7 +55,11 @@ func (p *DockerCompose) Apply(ctx context.Context, runtime RuntimeContext, app a
 		}
 	}
 
-	return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, "up", "--detach", "--remove-orphans")...)
+	// Compose file changes need up (recreate), secret-only changes just need restart.
+	if runtime.ComposeFilesChanged {
+		return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, "up", "--detach", "--remove-orphans")...)
+	}
+	return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, "restart")...)
 }
 
 // dockerLogin authenticates with the docker registry before pulling images.
