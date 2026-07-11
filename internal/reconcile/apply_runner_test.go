@@ -36,7 +36,7 @@ func TestRunnerApplyUpdateAndDelete(t *testing.T) {
 		t.Fatalf("initial reconcile: %v", err)
 	}
 
-	liveDir := filepath.Join(destinationRoot, "apps", "hello")
+	liveDir := filepath.Join(destinationRoot, "hello")
 	assertFileContent(t, filepath.Join(liveDir, "compose.yaml"), "services:\n  hello:\n    image: hello:v1\n")
 	assertFileContent(t, filepath.Join(liveDir, "secrets", ".env"), "TOKEN=initial\n")
 	if provisioner.applyCalls != 1 || provisioner.validateCalls != 1 {
@@ -68,14 +68,14 @@ func TestRunnerApplyUpdateAndDelete(t *testing.T) {
 	if _, err := os.Stat(liveDir); !os.IsNotExist(err) {
 		t.Fatalf("expected live dir to be archived, stat err=%v", err)
 	}
-	archived, err := filepath.Glob(filepath.Join(destinationRoot, "archive", "hello", "*", "compose.yaml"))
+	archived, err := filepath.Glob(filepath.Join(destinationRoot, "..", "archive", "hello", "*", "compose.yaml"))
 	if err != nil {
 		t.Fatalf("glob archive: %v", err)
 	}
 	if len(archived) != 1 {
 		t.Fatalf("expected archived compose file, got %#v", archived)
 	}
-	secretArchives, err := filepath.Glob(filepath.Join(destinationRoot, "archive", "hello", "*", "secrets", ".env"))
+	secretArchives, err := filepath.Glob(filepath.Join(destinationRoot, "..", "archive", "hello", "*", "secrets", ".env"))
 	if err != nil {
 		t.Fatalf("glob archived secret: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestRunnerDeleteRecoversOrphanedArchiveSecrets(t *testing.T) {
 	}
 	fixture.removeApp(t)
 
-	liveDir := filepath.Join(destinationRoot, "apps", "hello")
+	liveDir := filepath.Join(destinationRoot, "hello")
 	orphanArchiveDir, err := archiveAppDir(destinationRoot, "hello", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("archive app dir path: %v", err)

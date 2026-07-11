@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,7 +16,7 @@ import (
 )
 
 func liveAppDir(destinationRoot string, operationalID string) (string, error) {
-	return safeJoinUnder(filepath.Join(destinationRoot, "apps"), filepath.FromSlash(operationalID))
+	return safeJoinUnder(destinationRoot, filepath.FromSlash(operationalID))
 }
 
 func archiveAppDir(destinationRoot string, operationalID string, now time.Time) (string, error) {
@@ -31,7 +32,8 @@ func archiveAppDir(destinationRoot string, operationalID string, now time.Time) 
 }
 
 func archiveAppRoot(destinationRoot string, operationalID string) (string, error) {
-	return safeJoinUnder(filepath.Join(destinationRoot, "archive"), filepath.FromSlash(operationalID))
+	archiveRoot := filepath.Join(filepath.Dir(destinationRoot), "archive")
+	return safeJoinUnder(archiveRoot, filepath.FromSlash(operationalID))
 }
 
 func promoteStagingToLive(destinationRoot string, app application.DiscoveredApplication, staging AppStaging) (string, error) {
@@ -47,16 +49,16 @@ func promoteStagingToLive(destinationRoot string, app application.DiscoveredAppl
 	_ = os.RemoveAll(backupDir)
 
 	if _, err := os.Stat(liveDir); err == nil {
-		if err := os.Rename(liveDir, backupDir); err != nil {
+		if err := renameOrCopy(liveDir, backupDir); err != nil {
 			return "", fmt.Errorf("moving existing live dir %q aside: %w", liveDir, err)
 		}
 	} else if !os.IsNotExist(err) {
 		return "", fmt.Errorf("stat live dir %q: %w", liveDir, err)
 	}
 
-	if err := os.Rename(staging.Root, liveDir); err != nil {
+	if err := renameOrCopy(staging.Root, liveDir); err != nil {
 		if _, restoreErr := os.Stat(backupDir); restoreErr == nil {
-			_ = os.Rename(backupDir, liveDir)
+			_ = renameOrCopy(backupDir, liveDir)
 		}
 		return "", fmt.Errorf("promoting staging dir %q to %q: %w", staging.Root, liveDir, err)
 	}
@@ -117,7 +119,7 @@ func reconcileDeletedApp(ctx context.Context, destinationRoot string, operationa
 		if err != nil {
 			return entry, false, err
 		}
-		if err := os.Rename(liveDir, deleteDir); err != nil {
+		if err := renameOrCopy(liveDir, deleteDir); err != nil {
 			return entry, false, fmt.Errorf("archiving live dir %q to %q: %w", liveDir, deleteDir, err)
 		}
 	}
@@ -232,4 +234,75 @@ func scrubOrphanedArchivedSecrets(destinationRoot string, operationalID string, 
 		}
 	}
 	return nil
+}
+
+// renameOrCopy tries os.Rename first and falls back to recursive copy
+// when the source and destination are on different filesystems.
+func renameOrCopy(src, dst string) error {
+	err := os.Rename(src, dst)
+	if err == nil {
+		return nil
+	}
+	if !isCrossDeviceLink(err) {
+		return err
+	}
+	if err := copyDir(src, dst); err != nil {
+		return err
+	}
+	return os.RemoveAll(src)
+}
+
+func isCrossDeviceLink(err error) bool {
+	return strings.Contains(err.Error(), "invalid cross-device link") ||
+		strings.Contains(err.Error(), "cross-device link")
+}
+
+func copyDir(src, dst string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("stat source %q: %w", src, err)
+	}
+	if !srcInfo.IsDir() {
+		return fmt.Errorf("source %q is not a directory", src)
+	}
+
+	if err := os.MkdirAll(dst, srcInfo.Mode()); err != nil {
+		return fmt.Errorf("creating destination %q: %w", dst, err)
+	}
+
+	return filepath.Walk(src, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return fmt.Errorf("rel path for %q: %w", path, err)
+		}
+		dstPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, info.Mode())
+		}
+		return copyFile(path, dstPath, info.Mode())
+	})
+}
+
+func copyFile(src, dst string, mode os.FileMode) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open source %q: %w", src, err)
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return fmt.Errorf("create destination %q: %w", dst, err)
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return fmt.Errorf("copy %q to %q: %w", src, dst, err)
+	}
+	return dstFile.Close()
 }

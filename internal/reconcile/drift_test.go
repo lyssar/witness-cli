@@ -30,7 +30,7 @@ func TestDetectDrift(t *testing.T) {
 		t.Fatalf("expected missing drift, got %#v", resultMissing)
 	}
 
-	livePath := filepath.Join(destination, "apps", "apps", "web")
+	livePath := filepath.Join(destination, "apps", "web")
 	if err := os.MkdirAll(livePath, 0o755); err != nil {
 		t.Fatalf("mkdir live: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestDetectDriftTypeMismatchAndSymlink(t *testing.T) {
 	}
 	fileset := application.FileSet{ManagedFiles: []application.ManagedFile{{RelativePath: "compose.yaml", SourcePath: "/unused"}}}
 
-	liveDir := filepath.Join(destination, "apps", "apps", "web")
+	liveDir := filepath.Join(destination, "apps", "web")
 	if err := os.MkdirAll(liveDir, 0o755); err != nil {
 		t.Fatalf("mkdir live: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestDetectDriftLiveRootNonDirFails(t *testing.T) {
 	}
 	fileset := application.FileSet{ManagedFiles: []application.ManagedFile{{RelativePath: "compose.yaml", SourcePath: "/unused"}}}
 
-	livePath := filepath.Join(destination, "apps", "apps", "web")
+	livePath := filepath.Join(destination, "apps", "web")
 	if err := os.MkdirAll(filepath.Dir(livePath), 0o755); err != nil {
 		t.Fatalf("mkdir parent: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestDetectDriftMissingStagingFileFails(t *testing.T) {
 	app := application.DiscoveredApplication{OperationalID: "apps/web"}
 	stagingRoot := t.TempDir()
 	fileset := application.FileSet{ManagedFiles: []application.ManagedFile{{RelativePath: "compose.yaml", SourcePath: "/unused"}}}
-	if err := os.MkdirAll(filepath.Join(destination, "apps", "apps", "web"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(destination, "apps", "web"), 0o755); err != nil {
 		t.Fatalf("mkdir live: %v", err)
 	}
 

@@ -22,8 +22,7 @@ type DriftResult struct {
 }
 
 func detectDrift(destinationRoot string, app application.DiscoveredApplication, fileset application.FileSet, staging AppStaging) (DriftResult, error) {
-	liveAppsRoot := filepath.Join(destinationRoot, "apps")
-	liveAppDir, err := safeJoinUnder(liveAppsRoot, filepath.FromSlash(app.OperationalID))
+	liveAppDir, err := safeJoinUnder(destinationRoot, filepath.FromSlash(app.OperationalID))
 	if err != nil {
 		return DriftResult{}, err
 	}

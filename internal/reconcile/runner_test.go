@@ -232,8 +232,8 @@ func TestRunnerRunDiscoversApplications(t *testing.T) {
 		destinationRoot := filepath.Join(t.TempDir(), "dest")
 		writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "apps", destinationRoot))
 		writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
-		writeFile(t, filepath.Join(destinationRoot, "apps", "app-main", "witness.yaml"), appManifest("app-main"))
-		writeFile(t, filepath.Join(destinationRoot, "apps", "app-main", "compose.yaml"), "services: {}\n")
+		writeFile(t, filepath.Join(destinationRoot, "app-main", "witness.yaml"), appManifest("app-main"))
+		writeFile(t, filepath.Join(destinationRoot, "app-main", "compose.yaml"), "services: {}\n")
 
 		if err := NewRunner(configRoot).Run(context.Background()); err != nil {
 			t.Fatalf("runner run: %v", err)
