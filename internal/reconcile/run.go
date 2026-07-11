@@ -352,12 +352,19 @@ func (r *Runner) applyApp(ctx context.Context, destinationRoot string, runtime a
 		return err
 	}
 	runtime.staging.Root = liveDir
+
+	// Update registry password path relative to new live dir
+	var registryPasswordPath string
+	if runtime.staging.RegistryPasswordPath != "" {
+		registryPasswordPath = filepath.Join(liveDir, filepath.Base(runtime.staging.RegistryPasswordPath))
+	}
+
 	runtimeRuntime := provisioner.RuntimeContext{
 		OperationalID:        runtime.app.OperationalID,
 		RuntimeSlug:          runtime.app.RuntimeSlug,
 		LiveDir:              liveDir,
 		SourceDir:            runtime.app.SourceDir,
-		RegistryPasswordPath: runtime.staging.RegistryPasswordPath,
+		RegistryPasswordPath: registryPasswordPath,
 	}
 	if err := p.Apply(ctx, runtimeRuntime, runtime.app.Application); err != nil {
 		return fmt.Errorf("applying provisioner %q: %w", p.Name(), err)
