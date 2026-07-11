@@ -21,7 +21,7 @@ type v1Secret struct {
 }
 
 type AppSpec struct {
-	Provisioner         string                 `yaml:"-"`
+	Provisioner         string                 `yaml:"provisioner"`
 	ComposeFiles        []string               `yaml:"composeFiles"`
 	Secrets             []v1Secret             `yaml:"secrets,omitempty"`
 	RegistryCredentials *v1RegistryCredentials `yaml:"registryCredentials,omitempty"`
