@@ -303,6 +303,8 @@ func (observer *Observer) WriteConfig() {
 	utils.CheckErr(err)
 	err = f.Sync()
 	utils.CheckErr(err)
+
+	utils.LogSuccess("Observer config created", "path", pathOut)
 }
 
 func (observer *Observer) WriteConfigRoot() error {
