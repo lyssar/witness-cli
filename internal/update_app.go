@@ -58,40 +58,90 @@ func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parsing manifest: %w", err)
 	}
 
-	utils.LogInfo("Current manifest", "name", app.Metadata.Name, "provisioner", app.Spec.Provisioner)
+	// === Validate and fix required fields ===
 
-	// Ask what to update
-	var updateField string
-	err = huh.NewSelect[string]().
-		Title("What do you want to update?").
-		Options(
-			huh.NewOption("Add/Update registry credentials", "registry"),
-			huh.NewOption("Add secret", "secret"),
-			huh.NewOption("Add compose file", "compose"),
-			huh.NewOption("Cancel", "cancel"),
-		).
-		Value(&updateField).
-		Run()
-	utils.CheckErr(err)
+	// Provisioner — required
+	if app.Spec.Provisioner == "" {
+		err = huh.NewSelect[string]().
+			Title("Provisioner is missing — select one").
+			Options(
+				huh.NewOption("Docker Compose", "docker-compose"),
+			).
+			Value(&app.Spec.Provisioner).
+			Run()
+		utils.CheckErr(err)
+	}
 
-	switch updateField {
-	case "registry":
-		if err := updateRegistryCredentials(&app, ageKey); err != nil {
-			return err
+	// ComposeFiles — required, must have at least one
+	if len(app.Spec.ComposeFiles) == 0 {
+		err = huh.NewInput().
+			Title("At least one compose file is required").
+			Description("Path to docker-compose file (relative to app directory)").
+			Validate(huh.ValidateNotEmpty()).
+			Value(&app.Spec.ComposeFiles).
+			Run()
+		utils.CheckErr(err)
+	}
+
+	utils.LogInfo("Current manifest",
+		"name", app.Metadata.Name,
+		"provisioner", app.Spec.Provisioner,
+		"composeFiles", len(app.Spec.ComposeFiles),
+		"secrets", len(app.Spec.Secrets),
+		"registry", app.Spec.RegistryCredentials != nil,
+	)
+
+	// === Ask what to update ===
+	var actions []string
+	actionOptions := []huh.Option[string]{
+		huh.NewOption("Update registry credentials", "registry"),
+		huh.NewOption("Add secret", "secret"),
+		huh.NewOption("Add compose file", "compose"),
+		huh.NewOption("Done", "done"),
+	}
+
+	for {
+		var action string
+		err = huh.NewSelect[string]().
+			Title("What do you want to do?").
+			Options(actionOptions...).
+			Value(&action).
+			Run()
+		utils.CheckErr(err)
+
+		if action == "done" {
+			break
 		}
-	case "secret":
-		if err := addSecret(&app); err != nil {
-			return err
+
+		switch action {
+		case "registry":
+			if err := updateRegistryCredentials(&app, ageKey); err != nil {
+				return err
+			}
+		case "secret":
+			if err := addSecret(&app); err != nil {
+				return err
+			}
+		case "compose":
+			if err := addComposeFile(&app); err != nil {
+				return err
+			}
 		}
-	case "compose":
-		if err := addComposeFile(&app); err != nil {
-			return err
-		}
-	case "cancel":
+
+		actions = append(actions, action)
+	}
+
+	if len(actions) == 0 {
+		utils.LogInfo("No changes made")
 		return nil
 	}
 
-	// Write updated manifest
+	// === Validate before writing ===
+	if err := validateAppManifest(&app); err != nil {
+		return fmt.Errorf("manifest invalid, not writing: %w", err)
+	}
+
+	// === Write ===
 	renderer, err := templates.NewRenderer()
 	utils.CheckErr(err)
 
@@ -108,7 +158,43 @@ func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("syncing manifest: %w", err)
 	}
 
-	utils.LogSuccess(fmt.Sprintf("Updated %s", manifestPath))
+	utils.LogSuccess(fmt.Sprintf("Updated %s (%d changes)", manifestPath, len(actions)))
+	return nil
+}
+
+func validateAppManifest(app *App) error {
+	if app.Metadata.Name == "" {
+		return fmt.Errorf("metadata.name is required")
+	}
+	if app.Spec.Provisioner == "" {
+		return fmt.Errorf("spec.provisioner is required")
+	}
+	if len(app.Spec.ComposeFiles) == 0 {
+		return fmt.Errorf("spec.composeFiles must have at least one entry")
+	}
+	if app.Spec.RegistryCredentials != nil {
+		creds := app.Spec.RegistryCredentials
+		if creds.Registry == "" {
+			return fmt.Errorf("registryCredentials.registry is required")
+		}
+		if creds.Username == "" {
+			return fmt.Errorf("registryCredentials.username is required")
+		}
+		if creds.Password == "" {
+			return fmt.Errorf("registryCredentials.password is required")
+		}
+	}
+	for i, secret := range app.Spec.Secrets {
+		if secret.Source == "" {
+			return fmt.Errorf("secrets[%d].source is required", i)
+		}
+		if secret.Target == "" {
+			return fmt.Errorf("secrets[%d].target is required", i)
+		}
+		if secret.Decryptor == "" {
+			return fmt.Errorf("secrets[%d].decryptor is required", i)
+		}
+	}
 	return nil
 }
 
