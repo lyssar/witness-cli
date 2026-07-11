@@ -10,6 +10,7 @@ User={{ .Observer.Metadata.User }}
 Group={{ .Observer.Metadata.User }}
 WorkingDirectory={{ .ObserverConfigPath }}
 ExecStart=/usr/local/bin/witness reconcile {{ .ObserverConfigPath }}
+SyslogIdentifier={{ .Observer.Metadata.Name }}
 StandardOutput=journal
 StandardError=journal
 
