@@ -13,9 +13,12 @@ ExecStart=/usr/local/bin/witness reconcile {{ .ObserverConfigPath }}
 StandardOutput=journal
 StandardError=journal
 
+# Filesystem access
+ProtectSystem=full
+ProtectHome=no
+ReadWritePaths={{ .Observer.Spec.Destination }} {{ .ObserverConfigPath }}
+
 # Security hardening
-ProtectSystem=strict
-ProtectHome=read-only
 PrivateTmp=yes
 NoNewPrivileges=yes
 CapabilityBoundingSet=~CAP_SYS_ADMIN CAP_NET_ADMIN CAP_SYS_PTRACE
