@@ -226,7 +226,7 @@ func (app *App) WriteConfig() {
 	pwd, err := os.Getwd()
 	utils.CheckErr(err)
 
-	pathOut := filepath.Join(pwd, "witness-app.yaml")
+	pathOut := filepath.Join(pwd, application.ManifestFileName)
 	f, err := os.Create(pathOut)
 	utils.CheckErr(err)
 

@@ -54,7 +54,7 @@ func (Age) DecryptFile(ctx context.Context, request Request) error {
 		return fmt.Errorf("decrypt %q target %q: create parent: %w", request.OperationalID, request.TargetPath, err)
 	}
 
-	targetFile, err := os.OpenFile(request.TargetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	targetFile, err := os.OpenFile(request.TargetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("decrypt %q target %q: open target: %w", request.OperationalID, request.TargetPath, err)
 	}
