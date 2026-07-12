@@ -80,6 +80,9 @@ func promoteRootedStagingToLive(destination *destinationFS, app application.Disc
 }
 
 func reconcileDeletedApp(ctx context.Context, destination *destinationFS, operationalID string, entry state.Entry, p provisioner.Provisioner, now time.Time) (state.Entry, bool, error) {
+	if !entry.SecretTargetsKnown {
+		return reconcileUntrustedDeletedApp(ctx, destination, operationalID, entry, p, now)
+	}
 	app, err := appFromState(operationalID, entry)
 	if err != nil {
 		return entry, false, err
@@ -139,6 +142,60 @@ func reconcileDeletedApp(ctx context.Context, destination *destinationFS, operat
 	return state.Entry{}, true, nil
 }
 
+// reconcileUntrustedDeletedApp is a safe recovery path for legacy state that
+// lacks a complete secret inventory. It only removes a live tree after the
+// runtime has stopped; it never archives or inspects untrusted secret targets.
+func reconcileUntrustedDeletedApp(ctx context.Context, destination *destinationFS, operationalID string, entry state.Entry, p provisioner.Provisioner, now time.Time) (state.Entry, bool, error) {
+	app, err := appFromStateWithoutSecrets(operationalID, entry)
+	if err != nil {
+		return entry, false, err
+	}
+	if entry.ArchivePath != "" {
+		err := fmt.Errorf("untrusted deletion state has an archive path and cannot be recovered safely")
+		return entry, false, err
+	}
+	archives, err := validatedArchivedAppRefs(destination, operationalID)
+	if err != nil {
+		return entry, false, err
+	}
+	if len(archives) != 0 {
+		err := fmt.Errorf("untrusted deletion state has recoverable archive %q and cannot be recovered safely", archives[len(archives)-1])
+		return entry, false, err
+	}
+	live, err := liveRef(operationalID)
+	if err != nil {
+		return entry, false, err
+	}
+	if err := destination.ensureNoSymlinkAncestry(live); err != nil {
+		return entry, false, err
+	}
+	runtime := provisioner.RuntimeContext{OperationalID: operationalID, RuntimeSlug: entry.RuntimeSlug, LiveDir: destination.absolute(live)}
+	if _, err := destination.root.Lstat(live); os.IsNotExist(err) {
+		if err := p.CleanupMissing(ctx, runtime); err != nil {
+			return deletingStateEntry(now, entry, "", err), false, err
+		}
+		return state.Entry{}, true, nil
+	} else if err != nil {
+		return entry, false, fmt.Errorf("stat rooted live app: %w", err)
+	}
+	if err := destination.validateLiveDirectory(live); err != nil {
+		return entry, false, err
+	}
+	if err := p.Delete(ctx, runtime, app); err != nil {
+		return deletingStateEntry(now, entry, "", err), false, err
+	}
+	if err := destination.validateLiveDirectory(live); err != nil {
+		return entry, false, err
+	}
+	if err := p.CleanupMissing(ctx, runtime); err != nil {
+		return deletingStateEntry(now, entry, "", err), false, err
+	}
+	if err := destination.root.RemoveAll(live); err != nil {
+		return deletingStateEntry(now, entry, "", fmt.Errorf("removing rooted live app: %w", err)), false, fmt.Errorf("removing rooted live app: %w", err)
+	}
+	return state.Entry{}, true, nil
+}
+
 func deleteAndScrub(ctx context.Context, destination *destinationFS, archive, operationalID string, entry state.Entry, p provisioner.Provisioner, app application.Application) error {
 	runtime := provisioner.RuntimeContext{OperationalID: operationalID, RuntimeSlug: entry.RuntimeSlug, LiveDir: destination.absolute(archive)}
 	// This is intentionally immediately adjacent to the subprocess call. The
@@ -190,34 +247,54 @@ func scrubArchivedFile(destination *destinationFS, archive, target string) error
 }
 
 func latestArchivedAppRef(destination *destinationFS, operationalID string) (string, error) {
+	refs, err := archivedAppRefs(destination, operationalID, false)
+	if err != nil || len(refs) == 0 {
+		return "", err
+	}
+	return refs[len(refs)-1], nil
+}
+
+// validatedArchivedAppRefs lists every canonical archive artifact only after
+// proving that each is a real directory. It is used by untrusted recovery,
+// where a symlink or non-directory timestamp artifact must block recovery
+// rather than be silently skipped.
+func validatedArchivedAppRefs(destination *destinationFS, operationalID string) ([]string, error) {
+	return archivedAppRefs(destination, operationalID, true)
+}
+
+func archivedAppRefs(destination *destinationFS, operationalID string, validateDirectories bool) ([]string, error) {
 	prefix, err := liveRef(operationalID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	root := filepath.Join("archive", prefix)
 	if err := destination.ensureNoSymlinkAncestry(root); err != nil {
-		return "", err
+		return nil, err
 	}
 	entries, err := destination.readDir(root)
 	if os.IsNotExist(err) {
-		return "", nil
+		return nil, nil
 	}
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	var refs []string
 	for _, entry := range entries {
-		if entry.IsDir() {
-			if ref, ok := canonicalArchiveRef(operationalID, filepath.Join(root, entry.Name())); ok {
-				refs = append(refs, ref)
-			}
+		ref, ok := canonicalArchiveRef(operationalID, filepath.Join(root, entry.Name()))
+		if !ok {
+			continue
 		}
+		if validateDirectories {
+			if err := destination.validateArchiveDirectory(ref); err != nil {
+				return nil, fmt.Errorf("validating recovered archive artifact %q: %w", ref, err)
+			}
+		} else if !entry.IsDir() {
+			continue
+		}
+		refs = append(refs, ref)
 	}
 	sort.Strings(refs)
-	if len(refs) == 0 {
-		return "", nil
-	}
-	return refs[len(refs)-1], nil
+	return refs, nil
 }
 
 func scrubOrphanedArchivedSecrets(destination *destinationFS, operationalID string, targets []string) error {

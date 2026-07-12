@@ -20,11 +20,12 @@ import (
 
 // Runner executes the reconcile workflow from an observer config root.
 type Runner struct {
-	logger        *slog.Logger
-	configRoot    string
-	decryptors    map[string]decryptor.Decryptor
-	provisioners  map[string]provisioner.Provisioner
-	stateStoreFor func(string) *state.Store
+	logger         *slog.Logger
+	configRoot     string
+	decryptors     map[string]decryptor.Decryptor
+	provisioners   map[string]provisioner.Provisioner
+	stateStoreFor  func(string) *state.Store
+	stagingBuilder func(context.Context, string, map[string]decryptor.Decryptor, application.DiscoveredApplication, application.FileSet) (AppStaging, func() error, error)
 }
 
 // RunnerOption customizes runner dependencies.
@@ -44,6 +45,7 @@ func NewRunner(configRoot string, options ...RunnerOption) *Runner {
 		stateStoreFor: func(root string) *state.Store {
 			return state.NewStore(statePathForConfigRoot(root))
 		},
+		stagingBuilder: buildAppStaging,
 	}
 
 	for _, option := range options {
@@ -246,9 +248,9 @@ func (r *Runner) Run(ctx context.Context) error {
 			currentState.LastError = ""
 			stateFile.Applications[app.OperationalID] = currentState
 			if saveErr := stateStore.Save(stateFile); saveErr != nil {
-				return saveErr
+				return errors.Join(saveErr, cleanupAppStaging(app, appEntry.staging, appEntry.stagingDone))
 			}
-			if cleanupErr := appEntry.stagingDone(); cleanupErr != nil {
+			if cleanupErr := cleanupAppStaging(app, appEntry.staging, appEntry.stagingDone); cleanupErr != nil {
 				r.logger.Warn("App staging cleanup failed", "operationalID", app.OperationalID, "error", cleanupErr)
 			}
 			continue
@@ -269,7 +271,11 @@ func (r *Runner) Run(ctx context.Context) error {
 
 		stateFile.Applications[app.OperationalID] = desiredStateEntry(now, app, resolvedCommit)
 		if saveErr := stateStore.Save(stateFile); saveErr != nil {
-			return saveErr
+			return errors.Join(saveErr, cleanupAppStaging(app, appEntry.staging, appEntry.stagingDone))
+		}
+		if cleanupErr := cleanupAppStaging(app, appEntry.staging, appEntry.stagingDone); cleanupErr != nil {
+			appErrors = append(appErrors, fmt.Sprintf("%s: %v", app.OperationalID, cleanupErr))
+			r.logger.Error("App staging cleanup failed after successful apply", "operationalID", app.OperationalID, "error", cleanupErr)
 		}
 	}
 
@@ -319,7 +325,7 @@ func (r *Runner) prepareAppRuntime(ctx context.Context, agePath string, destinat
 		return appRuntime{}, err
 	}
 
-	staging, cleanup, err := buildAppStaging(ctx, agePath, r.decryptors, app, fileset)
+	staging, cleanup, err := r.stagingBuilder(ctx, agePath, r.decryptors, app, fileset)
 	if err != nil {
 		return appRuntime{}, err
 	}
@@ -340,6 +346,16 @@ func (r *Runner) prepareAppRuntime(ctx context.Context, agePath string, destinat
 		stagingDone: cleanup,
 		drift:       drift,
 	}, nil
+}
+
+// cleanupAppStaging removes the temporary plaintext tree and retains its path in
+// any error so an operator can remediate a failed cleanup without exposing its
+// contents in logs.
+func cleanupAppStaging(app application.DiscoveredApplication, staging AppStaging, cleanup func() error) error {
+	if err := cleanup(); err != nil {
+		return fmt.Errorf("removing plaintext staging root %q for app %q: %w", staging.Root, app.OperationalID, err)
+	}
+	return nil
 }
 
 func (r *Runner) applyApp(ctx context.Context, destination *destinationFS, runtime appRuntime) error {

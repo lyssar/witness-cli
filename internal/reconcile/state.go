@@ -59,6 +59,24 @@ func deletingStateEntry(now time.Time, existing state.Entry, archivePath string,
 }
 
 func appFromState(operationalID string, entry state.Entry) (application.Application, error) {
+	app, err := appFromStateWithoutSecrets(operationalID, entry)
+	if err != nil {
+		return application.Application{}, err
+	}
+	if !entry.SecretTargetsKnown {
+		return application.Application{}, fmt.Errorf("state entry secret target inventory is unavailable")
+	}
+	secretTargets, err := canonicalStatePaths("secret targets", entry.SecretTargets, false)
+	if err != nil {
+		return application.Application{}, err
+	}
+	app.Spec.Secrets = secretsFromTargets(secretTargets)
+	return app, nil
+}
+
+// appFromStateWithoutSecrets validates the operational fields needed to stop a
+// runtime, deliberately excluding an untrusted secret-target inventory.
+func appFromStateWithoutSecrets(operationalID string, entry state.Entry) (application.Application, error) {
 	expectedRuntimeSlug, err := application.SlugFromIdentityPath(operationalID)
 	if err != nil {
 		return application.Application{}, fmt.Errorf("validating operational identity %q: %w", operationalID, err)
@@ -73,20 +91,12 @@ func appFromState(operationalID string, entry state.Entry) (application.Applicat
 	if err != nil {
 		return application.Application{}, err
 	}
-	if !entry.SecretTargetsKnown {
-		return application.Application{}, fmt.Errorf("state entry secret target inventory is unavailable")
-	}
-	secretTargets, err := canonicalStatePaths("secret targets", entry.SecretTargets, false)
-	if err != nil {
-		return application.Application{}, err
-	}
 
 	return application.Application{
 		Metadata: application.Metadata{Name: entry.ApplicationName},
 		Spec: application.Spec{
 			Provisioner:  entry.Provisioner,
 			ComposeFiles: composeFiles,
-			Secrets:      secretsFromTargets(secretTargets),
 		},
 	}, nil
 }

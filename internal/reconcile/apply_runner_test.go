@@ -97,6 +97,40 @@ func TestRunnerApplyUpdateAndDelete(t *testing.T) {
 	}
 }
 
+func TestRunnerSuccessfulApplyRemovesPlaintextStagingRoot(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary is required for reconcile runner tests")
+	}
+
+	fixture := newMutableGitFixture(t)
+	configRoot := t.TempDir()
+	destinationRoot := filepath.Join(t.TempDir(), "dest")
+	writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "apps", destinationRoot))
+	writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
+
+	provisioner := &fakeProvisioner{}
+	runner := NewRunner(configRoot, WithDecryptor(fakeDecryptor{content: "TOKEN=initial\n"}), WithProvisioner(provisioner))
+	var stagingRoot string
+	runner.stagingBuilder = func(ctx context.Context, agePath string, decryptors map[string]decryptor.Decryptor, app application.DiscoveredApplication, fileset application.FileSet) (AppStaging, func() error, error) {
+		staging, cleanup, err := buildAppStaging(ctx, agePath, decryptors, app, fileset)
+		stagingRoot = staging.Root
+		return staging, cleanup, err
+	}
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if stagingRoot == "" {
+		t.Fatal("expected reconcile to create a staging root")
+	}
+	if _, err := os.Stat(stagingRoot); !os.IsNotExist(err) {
+		t.Fatalf("expected plaintext staging root removed after successful apply, stat err=%v", err)
+	}
+	if provisioner.applyCalls != 1 {
+		t.Fatalf("expected one apply call, got %d", provisioner.applyCalls)
+	}
+}
+
 func TestArchiveReferenceIsDestinationRelative(t *testing.T) {
 	t.Parallel()
 
@@ -150,7 +184,7 @@ func TestRunnerDeleteFailureKeepsArchivedState(t *testing.T) {
 	}
 }
 
-func TestRunnerFailedLegacyStateRemainsUntrustedForDeletion(t *testing.T) {
+func TestRunnerFailedLegacyStateUsesSafeDeletionRecovery(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git binary is required for reconcile runner tests")
 	}
@@ -184,14 +218,14 @@ func TestRunnerFailedLegacyStateRemainsUntrustedForDeletion(t *testing.T) {
 	}
 
 	fixture.removeApp(t)
-	if err := runner.Run(context.Background()); err == nil {
-		t.Fatal("expected untrusted deletion state rejection")
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("safe untrusted deletion recovery: %v", err)
 	}
-	if provisioner.deleteCalls != 0 || provisioner.cleanupCalls != 0 {
-		t.Fatalf("untrusted deletion reached provisioner: delete=%d cleanup=%d", provisioner.deleteCalls, provisioner.cleanupCalls)
+	if provisioner.deleteCalls != 1 || provisioner.cleanupCalls != 1 {
+		t.Fatalf("untrusted deletion provisioner calls = delete=%d cleanup=%d, want 1 each", provisioner.deleteCalls, provisioner.cleanupCalls)
 	}
-	if _, err := os.Stat(filepath.Join(destinationRoot, "hello")); err != nil {
-		t.Fatalf("untrusted deletion archived or removed live application: %v", err)
+	if _, err := os.Stat(filepath.Join(destinationRoot, "hello")); !os.IsNotExist(err) {
+		t.Fatalf("untrusted deletion did not remove live application: %v", err)
 	}
 	if archives, err := filepath.Glob(filepath.Join(destinationRoot, "archive", "hello", "*")); err != nil {
 		t.Fatalf("glob archives: %v", err)
@@ -405,8 +439,10 @@ type fakeProvisioner struct {
 	deleteCalls   int
 	cleanupCalls  int
 	deleteErr     error
+	cleanupErr    error
 	validateErr   error
 	lastRuntime   provisioner.RuntimeContext
+	lastApp       application.Application
 }
 
 func (f *fakeProvisioner) Name() string { return application.ProvisionerDockerCompose }
@@ -422,14 +458,15 @@ func (f *fakeProvisioner) Apply(_ context.Context, rt provisioner.RuntimeContext
 	return nil
 }
 
-func (f *fakeProvisioner) Delete(_ context.Context, _ provisioner.RuntimeContext, _ application.Application) error {
+func (f *fakeProvisioner) Delete(_ context.Context, _ provisioner.RuntimeContext, app application.Application) error {
 	f.deleteCalls++
+	f.lastApp = app
 	return f.deleteErr
 }
 
 func (f *fakeProvisioner) CleanupMissing(_ context.Context, _ provisioner.RuntimeContext) error {
 	f.cleanupCalls++
-	return nil
+	return f.cleanupErr
 }
 
 type mutableGitFixture struct {

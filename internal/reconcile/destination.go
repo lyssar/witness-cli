@@ -107,6 +107,22 @@ func (d *destinationFS) validateArchiveDirectory(ref string) error {
 	return nil
 }
 
+// validateLiveDirectory verifies that a live application reference resolves
+// inside the destination to a real directory, without a symlink in its path.
+func (d *destinationFS) validateLiveDirectory(ref string) error {
+	if err := d.ensureNoSymlinkAncestry(ref); err != nil {
+		return err
+	}
+	info, err := d.root.Lstat(ref)
+	if err != nil {
+		return fmt.Errorf("stat live directory %q: %w", ref, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("live path must be a non-symlink directory: %q", ref)
+	}
+	return nil
+}
+
 func (d *destinationFS) copyExternalTree(source, target string) error {
 	if err := d.ensureNoSymlinkAncestry(target); err != nil {
 		return err

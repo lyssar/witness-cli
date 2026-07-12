@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -92,6 +93,10 @@ func stageSecrets(ctx context.Context, ageKeyPath string, decryptors map[string]
 }
 
 func stageRegistryPassword(ctx context.Context, ageKeyPath string, decryptors map[string]decryptor.Decryptor, root string, app application.DiscoveredApplication) (string, error) {
+	return stageRegistryPasswordWithRemove(ctx, ageKeyPath, decryptors, root, app, os.Remove)
+}
+
+func stageRegistryPasswordWithRemove(ctx context.Context, ageKeyPath string, decryptors map[string]decryptor.Decryptor, root string, app application.DiscoveredApplication, removeFile func(string) error) (string, error) {
 	creds := app.Application.Spec.RegistryCredentials
 	if creds == nil || creds.Password == "" {
 		return "", nil
@@ -120,8 +125,18 @@ func stageRegistryPassword(ctx context.Context, ageKeyPath string, decryptors ma
 		return "", fmt.Errorf("decrypting registry password: %w", err)
 	}
 
-	// Remove encrypted temp file
-	_ = os.Remove(encryptedPath)
+	// The encrypted source is staging-only. Do not return a staging tree that
+	// could later be promoted or archived when its removal fails.
+	if err := removeFile(encryptedPath); err != nil {
+		cleanupErrs := []error{fmt.Errorf("removing encrypted registry password: %w", err)}
+		if cleanupErr := os.Remove(encryptedPath); cleanupErr != nil && !os.IsNotExist(cleanupErr) {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("retrying encrypted registry password cleanup: %w", cleanupErr))
+		}
+		if cleanupErr := os.Remove(targetPath); cleanupErr != nil && !os.IsNotExist(cleanupErr) {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("removing decrypted registry password after encrypted cleanup failure: %w", cleanupErr))
+		}
+		return "", errors.Join(cleanupErrs...)
+	}
 
 	return targetPath, nil
 }

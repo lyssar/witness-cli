@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -169,6 +170,34 @@ func TestBuildAppStagingRejectsUnknownDecryptor(t *testing.T) {
 	}
 	if got := err.Error(); !bytes.Contains([]byte(got), []byte("decryptor \"age\" is required")) {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestStageRegistryPasswordFailsClosedWhenEncryptedSourceRemovalFails(t *testing.T) {
+	root := t.TempDir()
+	app := application.DiscoveredApplication{
+		OperationalID: "apps/hello",
+		Application: application.Application{Spec: application.Spec{RegistryCredentials: &application.RegistryCredentials{
+			Password: "encrypted-password",
+		}}},
+	}
+	decrypt := fakeDecryptor{content: "plaintext-password"}
+	removeErr := errors.New("remove encrypted source")
+
+	_, err := stageRegistryPasswordWithRemove(context.Background(), "age.key", map[string]decryptor.Decryptor{application.DecryptorAge: decrypt}, root, app, func(path string) error {
+		if filepath.Base(path) == ".registry-password-encrypted" {
+			return removeErr
+		}
+		return os.Remove(path)
+	})
+	if !errors.Is(err, removeErr) {
+		t.Fatalf("stage registry password error = %v, want encrypted-source removal error", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, ".registry-password")); !os.IsNotExist(statErr) {
+		t.Fatalf("decrypted registry password remained after failed encrypted cleanup: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, ".registry-password-encrypted")); !os.IsNotExist(statErr) {
+		t.Fatalf("encrypted registry password remained after failed cleanup: %v", statErr)
 	}
 }
 
