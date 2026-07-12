@@ -166,7 +166,7 @@ spec:
   - Observer root on the target host
   - fixed derived paths:
     - `<destination>/apps`
-    - `<destination>/archives`
+    - `<destination>/archive/<operationalID>/<UTC nanosecond timestamp>`
 - `spec.source.repoURL`
   - observed Git repository
 - `spec.source.targetRevision`
@@ -195,8 +195,11 @@ Example:
 │       ├── docker-compose.yaml
 │       ├── .env
 │       └── data/
-└── archives/
-    └── my-app-2026-04-25T12-30-00Z.tar.gz
+└── archive/
+	    └── my-app/
+	        └── 20260425T123000.000000000Z/
+	            ├── docker-compose.yaml
+	            └── data/
 ```
 
 This separation is important so control-plane secrets like the observer age key are not exposed inside runtime app roots.
@@ -233,7 +236,7 @@ V1 application behavior is intentionally strict:
 - drift is content-based
 - any managed drift triggers apply
 - failed apps retry automatically
-- deleted apps are archived before removal
+- deleted apps are archived before removal in timestamped directories under `<destination>/archive/<operationalID>/`
 
 The detailed application contract lives in:
 

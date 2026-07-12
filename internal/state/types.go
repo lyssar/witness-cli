@@ -4,7 +4,7 @@ import "time"
 
 const (
 	// CurrentVersion is the current on-disk state schema version.
-	CurrentVersion = 1
+	CurrentVersion = 2
 )
 
 // Status represents the persisted reconcile status for one application.
@@ -31,6 +31,7 @@ type Entry struct {
 	Provisioner                  string     `json:"provisioner,omitempty"`
 	ComposeFiles                 []string   `json:"composeFiles,omitempty"`
 	SecretTargets                []string   `json:"secretTargets,omitempty"`
+	SecretTargetsKnown           bool       `json:"secretTargetsKnown,omitempty"`
 	ArchivePath                  string     `json:"archivePath,omitempty"`
 }
 

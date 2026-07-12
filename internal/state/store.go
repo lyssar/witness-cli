@@ -37,7 +37,11 @@ func (s *Store) Load() (File, error) {
 		return File{}, fmt.Errorf("decoding state file %q: %w", s.path, err)
 	}
 
-	if file.Version == 0 {
+	if file.Version == 0 || file.Version == 1 {
+		// Version 1 did not record whether SecretTargets was a complete
+		// inventory. Preserve its entries, but mark the file as current so
+		// successful reconciles can rewrite discovered applications. Retained
+		// entries remain untrusted because their marker is false.
 		file.Version = CurrentVersion
 	}
 	if file.Version != CurrentVersion {

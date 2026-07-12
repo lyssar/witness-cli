@@ -72,3 +72,23 @@ func TestStoreSaveIsAtomic(t *testing.T) {
 		t.Fatalf("expected only final state file, got %#v", entries)
 	}
 }
+
+func TestStoreLoadMigratesLegacySecretInventoryToUntrusted(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "state.json")
+	if err := os.WriteFile(path, []byte(`{"version":1,"applications":{"hello":{"secretTargets":["secrets/.env"]}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := NewStore(path).Load()
+	if err != nil {
+		t.Fatalf("load legacy state: %v", err)
+	}
+	if file.Version != CurrentVersion {
+		t.Fatalf("expected migrated version %d, got %d", CurrentVersion, file.Version)
+	}
+	if file.Applications["hello"].SecretTargetsKnown {
+		t.Fatal("legacy secret targets must remain untrusted")
+	}
+}

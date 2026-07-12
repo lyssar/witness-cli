@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,6 +59,7 @@ func TestRunnerApplyUpdateAndDelete(t *testing.T) {
 		t.Fatalf("expected second apply call, got %d", provisioner.applyCalls)
 	}
 
+	writeFile(t, filepath.Join(liveDir, ".registry-password"), "legacy-password")
 	fixture.removeApp(t)
 	if err := runner.Run(context.Background()); err != nil {
 		t.Fatalf("delete reconcile: %v", err)
@@ -68,23 +70,43 @@ func TestRunnerApplyUpdateAndDelete(t *testing.T) {
 	if _, err := os.Stat(liveDir); !os.IsNotExist(err) {
 		t.Fatalf("expected live dir to be archived, stat err=%v", err)
 	}
-	archived, err := filepath.Glob(filepath.Join(destinationRoot, "..", "archive", "hello", "*", "compose.yaml"))
+	archived, err := filepath.Glob(filepath.Join(destinationRoot, "archive", "hello", "*", "compose.yaml"))
 	if err != nil {
 		t.Fatalf("glob archive: %v", err)
 	}
 	if len(archived) != 1 {
 		t.Fatalf("expected archived compose file, got %#v", archived)
 	}
-	secretArchives, err := filepath.Glob(filepath.Join(destinationRoot, "..", "archive", "hello", "*", "secrets", ".env"))
+	secretArchives, err := filepath.Glob(filepath.Join(destinationRoot, "archive", "hello", "*", "secrets", ".env"))
 	if err != nil {
 		t.Fatalf("glob archived secret: %v", err)
 	}
 	if len(secretArchives) != 0 {
 		t.Fatalf("expected archived decrypted secret to be scrubbed, got %#v", secretArchives)
 	}
+	registryPasswordArchives, err := filepath.Glob(filepath.Join(destinationRoot, "archive", "hello", "*", ".registry-password"))
+	if err != nil {
+		t.Fatalf("glob archived registry password: %v", err)
+	}
+	if len(registryPasswordArchives) != 0 {
+		t.Fatalf("expected archived registry password to be scrubbed, got %#v", registryPasswordArchives)
+	}
 	stateFile = loadStateFileForTest(t, filepath.Join(configRoot, "state.json"))
 	if _, ok := stateFile.Applications["hello"]; ok {
 		t.Fatalf("expected state entry removed after delete, got %#v", stateFile.Applications)
+	}
+}
+
+func TestArchiveReferenceIsDestinationRelative(t *testing.T) {
+	t.Parallel()
+
+	archivePath, err := archiveRef("team-a/hello", time.Date(2026, 7, 12, 1, 2, 3, 4, time.UTC))
+	if err != nil {
+		t.Fatalf("archive reference: %v", err)
+	}
+
+	if want := "archive/team-a/hello/20260712T010203.000000004Z"; archivePath != want {
+		t.Fatalf("archive reference = %q, want %q", archivePath, want)
 	}
 }
 
@@ -105,6 +127,7 @@ func TestRunnerDeleteFailureKeepsArchivedState(t *testing.T) {
 		t.Fatalf("initial reconcile: %v", err)
 	}
 	fixture.removeApp(t)
+	writeFile(t, filepath.Join(destinationRoot, "hello", ".registry-password"), "legacy-password")
 
 	err := runner.Run(context.Background())
 	if err == nil {
@@ -116,11 +139,96 @@ func TestRunnerDeleteFailureKeepsArchivedState(t *testing.T) {
 	if entry.Status != state.StatusDeleting || entry.ArchivePath == "" {
 		t.Fatalf("expected deleting state with archive path, got %#v", entry)
 	}
-	if _, err := os.Stat(entry.ArchivePath); err != nil {
+	if _, err := os.Stat(filepath.Join(destinationRoot, entry.ArchivePath)); err != nil {
 		t.Fatalf("expected archive path to exist: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(entry.ArchivePath, "secrets", ".env")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(destinationRoot, entry.ArchivePath, "secrets", ".env")); !os.IsNotExist(err) {
 		t.Fatalf("expected archived decrypted secret to be scrubbed after failed delete, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(destinationRoot, entry.ArchivePath, ".registry-password")); !os.IsNotExist(err) {
+		t.Fatalf("expected archived registry password to be scrubbed after failed delete, stat err=%v", err)
+	}
+}
+
+func TestRunnerFailedLegacyStateRemainsUntrustedForDeletion(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary is required for reconcile runner tests")
+	}
+
+	fixture := newMutableGitFixture(t)
+	configRoot := t.TempDir()
+	destinationRoot := filepath.Join(t.TempDir(), "dest")
+	writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "apps", destinationRoot))
+	writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
+	writeFile(t, filepath.Join(destinationRoot, "hello", "compose.yaml"), "services: {}\n")
+	writeFile(t, filepath.Join(configRoot, "state.json"), `{
+  "applications": {
+    "hello": {
+      "runtimeSlug": "hello",
+      "provisioner": "docker-compose",
+      "composeFiles": ["compose.yaml"]
+    }
+  }
+}
+`)
+
+	provisioner := &fakeProvisioner{validateErr: errBoom}
+	runner := NewRunner(configRoot, WithDecryptor(fakeDecryptor{content: "TOKEN=initial\n"}), WithProvisioner(provisioner))
+	if err := runner.Run(context.Background()); err == nil {
+		t.Fatal("expected discovered reconcile failure")
+	}
+
+	stateFile := loadStateFileForTest(t, filepath.Join(configRoot, "state.json"))
+	if stateFile.Applications["hello"].SecretTargetsKnown {
+		t.Fatal("failed reconcile upgraded legacy secret target inventory")
+	}
+
+	fixture.removeApp(t)
+	if err := runner.Run(context.Background()); err == nil {
+		t.Fatal("expected untrusted deletion state rejection")
+	}
+	if provisioner.deleteCalls != 0 || provisioner.cleanupCalls != 0 {
+		t.Fatalf("untrusted deletion reached provisioner: delete=%d cleanup=%d", provisioner.deleteCalls, provisioner.cleanupCalls)
+	}
+	if _, err := os.Stat(filepath.Join(destinationRoot, "hello")); err != nil {
+		t.Fatalf("untrusted deletion archived or removed live application: %v", err)
+	}
+	if archives, err := filepath.Glob(filepath.Join(destinationRoot, "archive", "hello", "*")); err != nil {
+		t.Fatalf("glob archives: %v", err)
+	} else if len(archives) != 0 {
+		t.Fatalf("untrusted deletion created archives: %#v", archives)
+	}
+}
+
+func TestRunnerRejectsRetainedRuntimeSlugCollisionBeforeProvisioner(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary is required for reconcile runner tests")
+	}
+
+	fixture := newMutableGitFixture(t)
+	fixture.addApp(t, "a/b-c", "slug-collision")
+	configRoot := t.TempDir()
+	destinationRoot := filepath.Join(t.TempDir(), "dest")
+	writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "apps", destinationRoot))
+	writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
+	store := state.NewStore(filepath.Join(configRoot, "state.json"))
+	if err := store.Save(state.File{Applications: map[string]state.Entry{
+		"a-b/c": deletionStateEntry(),
+	}}); err != nil {
+		t.Fatalf("save retained state: %v", err)
+	}
+
+	provisioner := &fakeProvisioner{}
+	err := NewRunner(configRoot, WithDecryptor(fakeDecryptor{}), WithProvisioner(provisioner)).Run(context.Background())
+	const want = `runtime slug collision between "a-b/c" and "a/b-c": "a-b-c"`
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("expected deterministic runtime slug collision %q, got %v", want, err)
+	}
+	if provisioner.validateCalls != 0 || provisioner.applyCalls != 0 || provisioner.deleteCalls != 0 || provisioner.cleanupCalls != 0 {
+		t.Fatalf("runtime slug collision reached provisioner: %#v", provisioner)
+	}
+	if _, err := os.Stat(destinationRoot); !os.IsNotExist(err) {
+		t.Fatalf("runtime slug collision mutated destination: %v", err)
 	}
 }
 
@@ -143,13 +251,15 @@ func TestRunnerDeleteRecoversOrphanedArchiveSecrets(t *testing.T) {
 	fixture.removeApp(t)
 
 	liveDir := filepath.Join(destinationRoot, "hello")
-	orphanArchiveDir, err := archiveAppDir(destinationRoot, "hello", time.Now().UTC())
+	orphanArchiveRef, err := archiveRef("hello", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("archive app dir path: %v", err)
 	}
+	orphanArchiveDir := filepath.Join(destinationRoot, orphanArchiveRef)
 	if err := os.MkdirAll(filepath.Dir(orphanArchiveDir), 0o755); err != nil {
 		t.Fatalf("mkdir orphan archive parent: %v", err)
 	}
+	writeFile(t, filepath.Join(liveDir, ".registry-password"), "legacy-password")
 	if err := os.Rename(liveDir, orphanArchiveDir); err != nil {
 		t.Fatalf("rename live dir to orphan archive: %v", err)
 	}
@@ -176,6 +286,106 @@ func TestRunnerDeleteRecoversOrphanedArchiveSecrets(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(orphanArchiveDir, "secrets", ".env")); !os.IsNotExist(err) {
 		t.Fatalf("expected orphaned archived secret to be scrubbed, stat err=%v", err)
 	}
+	if _, err := os.Stat(filepath.Join(orphanArchiveDir, ".registry-password")); !os.IsNotExist(err) {
+		t.Fatalf("expected orphaned archived registry password to be scrubbed, stat err=%v", err)
+	}
+}
+
+func TestRunnerRetryScrubsOrphanArchivesBeforeStateRemoval(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary is required for reconcile runner tests")
+	}
+
+	fixture := newMutableGitFixture(t)
+	configRoot := t.TempDir()
+	destinationRoot := filepath.Join(t.TempDir(), "dest")
+	writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "apps", destinationRoot))
+	writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
+
+	provisioner := &fakeProvisioner{}
+	runner := NewRunner(configRoot, WithDecryptor(fakeDecryptor{content: "TOKEN=initial\n"}), WithProvisioner(provisioner))
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("initial reconcile: %v", err)
+	}
+	fixture.removeApp(t)
+
+	archivePath, err := archiveRef("hello", time.Now().UTC())
+	if err != nil {
+		t.Fatalf("archive reference: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(destinationRoot, archivePath)), 0o755); err != nil {
+		t.Fatalf("mkdir archive parent: %v", err)
+	}
+	if err := os.Rename(filepath.Join(destinationRoot, "hello"), filepath.Join(destinationRoot, archivePath)); err != nil {
+		t.Fatalf("move live app to archive: %v", err)
+	}
+
+	orphanArchiveRef, err := archiveRef("hello", time.Now().UTC().Add(time.Second))
+	if err != nil {
+		t.Fatalf("orphan archive reference: %v", err)
+	}
+	writeFile(t, filepath.Join(destinationRoot, orphanArchiveRef, "secrets", ".env"), "orphan-secret")
+	writeFile(t, filepath.Join(destinationRoot, orphanArchiveRef, ".registry-password"), "orphan-password")
+
+	invalidArchiveRef, err := archiveRef("hello", time.Now().UTC().Add(2*time.Second))
+	if err != nil {
+		t.Fatalf("invalid archive reference: %v", err)
+	}
+	writeFile(t, filepath.Join(destinationRoot, invalidArchiveRef), "not a directory")
+
+	statePath := filepath.Join(configRoot, "state.json")
+	store := state.NewStore(statePath)
+	stateFile, err := store.Load()
+	if err != nil {
+		t.Fatalf("load state file: %v", err)
+	}
+	entry := stateFile.Applications["hello"]
+	entry.ArchivePath = ""
+	stateFile.Applications["hello"] = entry
+	if err := store.Save(stateFile); err != nil {
+		t.Fatalf("save state file: %v", err)
+	}
+
+	err = runner.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected orphan archive scrub failure")
+	}
+	stateFile = loadStateFileForTest(t, statePath)
+	entry = stateFile.Applications["hello"]
+	if entry.Status != state.StatusDeleting {
+		t.Fatalf("expected deleting state, got %#v", entry)
+	}
+	if !strings.Contains(entry.LastError, "archive path must be a non-symlink directory") {
+		t.Fatalf("expected scrub failure in last error, got %q", entry.LastError)
+	}
+	if strings.Contains(entry.LastError, "no such file or directory") {
+		t.Fatalf("last error retained stale live-path error: %q", entry.LastError)
+	}
+	if entry.ArchivePath != orphanArchiveRef {
+		t.Fatalf("expected selected archive path %q retained for retry, got %q", orphanArchiveRef, entry.ArchivePath)
+	}
+
+	if err := os.Remove(filepath.Join(destinationRoot, invalidArchiveRef)); err != nil {
+		t.Fatalf("remove invalid orphan archive: %v", err)
+	}
+	writeFile(t, filepath.Join(destinationRoot, invalidArchiveRef, "secrets", ".env"), "recovered-orphan-secret")
+	writeFile(t, filepath.Join(destinationRoot, invalidArchiveRef, ".registry-password"), "recovered-orphan-password")
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("retry orphan archive scrub: %v", err)
+	}
+	for _, ref := range []string{archivePath, orphanArchiveRef, invalidArchiveRef} {
+		if _, err := os.Stat(filepath.Join(destinationRoot, ref, "secrets", ".env")); !os.IsNotExist(err) {
+			t.Fatalf("expected orphan archived secret %q to be scrubbed before state removal, stat err=%v", ref, err)
+		}
+		if _, err := os.Stat(filepath.Join(destinationRoot, ref, ".registry-password")); !os.IsNotExist(err) {
+			t.Fatalf("expected orphan archived registry password %q to be scrubbed before state removal, stat err=%v", ref, err)
+		}
+	}
+	stateFile = loadStateFileForTest(t, statePath)
+	if _, ok := stateFile.Applications["hello"]; ok {
+		t.Fatalf("expected deletion state removed only after orphan archives were scrubbed, got %#v", stateFile.Applications)
+	}
 }
 
 type fakeDecryptor struct{ content string }
@@ -193,7 +403,9 @@ type fakeProvisioner struct {
 	validateCalls int
 	applyCalls    int
 	deleteCalls   int
+	cleanupCalls  int
 	deleteErr     error
+	validateErr   error
 	lastRuntime   provisioner.RuntimeContext
 }
 
@@ -201,7 +413,7 @@ func (f *fakeProvisioner) Name() string { return application.ProvisionerDockerCo
 
 func (f *fakeProvisioner) Validate(_ context.Context, _ provisioner.RuntimeContext, _ application.Application) error {
 	f.validateCalls++
-	return nil
+	return f.validateErr
 }
 
 func (f *fakeProvisioner) Apply(_ context.Context, rt provisioner.RuntimeContext, _ application.Application) error {
@@ -216,6 +428,7 @@ func (f *fakeProvisioner) Delete(_ context.Context, _ provisioner.RuntimeContext
 }
 
 func (f *fakeProvisioner) CleanupMissing(_ context.Context, _ provisioner.RuntimeContext) error {
+	f.cleanupCalls++
 	return nil
 }
 
@@ -263,6 +476,17 @@ func (f mutableGitFixture) removeApp(t *testing.T) {
 	}
 	runGit(t, f.seedPath, "add", "-A")
 	runGit(t, f.seedPath, "commit", "-m", "remove app")
+	runGit(t, f.seedPath, "push", "origin", "main")
+}
+
+func (f mutableGitFixture) addApp(t *testing.T, path, name string) {
+	t.Helper()
+
+	appPath := filepath.Join(f.seedPath, "apps", filepath.FromSlash(path))
+	writeFile(t, filepath.Join(appPath, "witness.yaml"), "apiVersion: witness.dev/v1alpha1\nkind: Application\nmetadata:\n  name: "+name+"\nspec:\n  provisioner: docker-compose\n  composeFiles:\n    - compose.yaml\n")
+	writeFile(t, filepath.Join(appPath, "compose.yaml"), "services: {}\n")
+	runGit(t, f.seedPath, "add", "apps")
+	runGit(t, f.seedPath, "commit", "-m", "add "+name)
 	runGit(t, f.seedPath, "push", "origin", "main")
 }
 

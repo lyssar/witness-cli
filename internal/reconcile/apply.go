@@ -2,12 +2,11 @@ package reconcile
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/lyssar/witness-cli/internal/application"
@@ -15,304 +14,231 @@ import (
 	"github.com/lyssar/witness-cli/internal/state"
 )
 
-func liveAppDir(destinationRoot string, operationalID string) (string, error) {
-	return safeJoinUnder(destinationRoot, filepath.FromSlash(operationalID))
-}
-
-func archiveAppDir(destinationRoot string, operationalID string, now time.Time) (string, error) {
-	archiveRoot, err := archiveAppRoot(destinationRoot, operationalID)
-	if err != nil {
-		return "", err
-	}
-	archivePath := filepath.Join(archiveRoot, now.UTC().Format("20060102T150405.000000000Z"))
-	if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
-		return "", fmt.Errorf("creating archive parent for %q: %w", archivePath, err)
-	}
-	return archivePath, nil
-}
-
-func archiveAppRoot(destinationRoot string, operationalID string) (string, error) {
-	archiveRoot := filepath.Join(filepath.Dir(destinationRoot), "archive")
-	return safeJoinUnder(archiveRoot, filepath.FromSlash(operationalID))
-}
-
 func promoteStagingToLive(destinationRoot string, app application.DiscoveredApplication, staging AppStaging) (string, error) {
-	liveDir, err := liveAppDir(destinationRoot, app.OperationalID)
+	destination, err := openDestinationFS(destinationRoot)
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(liveDir), 0o755); err != nil {
-		return "", fmt.Errorf("creating live app parent for %q: %w", liveDir, err)
+	defer func() {
+		if closeErr := destination.Close(); closeErr != nil {
+			return
+		}
+	}()
+	ref, err := promoteRootedStagingToLive(destination, app, staging)
+	if err != nil {
+		return "", err
 	}
+	return destination.absolute(ref), nil
+}
 
-	backupDir := liveDir + ".previous"
-	_ = os.RemoveAll(backupDir)
-
-	if _, err := os.Stat(liveDir); err == nil {
-		if err := renameOrCopy(liveDir, backupDir); err != nil {
-			return "", fmt.Errorf("moving existing live dir %q aside: %w", liveDir, err)
+func promoteRootedStagingToLive(destination *destinationFS, app application.DiscoveredApplication, staging AppStaging) (string, error) {
+	live, err := liveRef(app.OperationalID)
+	if err != nil {
+		return "", err
+	}
+	if err := destination.ensureNoSymlinkAncestry(live); err != nil {
+		return "", err
+	}
+	stage := ".witness-stage-" + filepath.Base(live) + "-" + time.Now().UTC().Format("20060102T150405.000000000Z")
+	if err := destination.copyExternalTree(staging.Root, stage); err != nil {
+		return "", fmt.Errorf("copying staging tree into destination: %w", err)
+	}
+	backup := live + ".previous"
+	if err := destination.root.RemoveAll(backup); err != nil {
+		return "", fmt.Errorf("removing prior backup: %w", err)
+	}
+	if _, err := destination.root.Lstat(live); err == nil {
+		if err := destination.root.Rename(live, backup); err != nil {
+			return "", fmt.Errorf("moving live app aside: %w", err)
 		}
 	} else if !os.IsNotExist(err) {
-		return "", fmt.Errorf("stat live dir %q: %w", liveDir, err)
+		return "", fmt.Errorf("stat live app: %w", err)
 	}
-
-	if err := renameOrCopy(staging.Root, liveDir); err != nil {
-		if _, restoreErr := os.Stat(backupDir); restoreErr == nil {
-			_ = renameOrCopy(backupDir, liveDir)
+	if err := destination.root.Rename(stage, live); err != nil {
+		if _, restoreErr := destination.root.Lstat(backup); restoreErr == nil {
+			if rollbackErr := destination.root.Rename(backup, live); rollbackErr != nil {
+				return "", errors.Join(
+					fmt.Errorf("promoting rooted staging tree: %w", err),
+					fmt.Errorf("restoring prior live app after failed promotion: %w", rollbackErr),
+				)
+			}
+		} else if !os.IsNotExist(restoreErr) {
+			return "", errors.Join(
+				fmt.Errorf("promoting rooted staging tree: %w", err),
+				fmt.Errorf("checking prior live app for rollback: %w", restoreErr),
+			)
 		}
-		return "", fmt.Errorf("promoting staging dir %q to %q: %w", staging.Root, liveDir, err)
+		return "", fmt.Errorf("promoting rooted staging tree: %w", err)
 	}
-	if err := os.Chmod(liveDir, 0o700); err != nil {
-		return "", fmt.Errorf("hardening live app root %q: %w", liveDir, err)
+	if err := destination.root.Chmod(live, 0o700); err != nil {
+		return "", fmt.Errorf("hardening live app root: %w", err)
 	}
-
-	_ = os.RemoveAll(backupDir)
-	return liveDir, nil
+	if err := destination.root.RemoveAll(backup); err != nil {
+		return "", fmt.Errorf("removing live backup: %w", err)
+	}
+	return live, nil
 }
 
-func reconcileDeletedApp(ctx context.Context, destinationRoot string, operationalID string, entry state.Entry, p provisioner.Provisioner, now time.Time) (state.Entry, bool, error) {
-	app, err := appFromState(entry)
+func reconcileDeletedApp(ctx context.Context, destination *destinationFS, operationalID string, entry state.Entry, p provisioner.Provisioner, now time.Time) (state.Entry, bool, error) {
+	app, err := appFromState(operationalID, entry)
 	if err != nil {
 		return entry, false, err
 	}
-
-	deleteDir := entry.ArchivePath
-	if deleteDir == "" {
-		liveDir, err := liveAppDir(destinationRoot, operationalID)
+	archive, valid := canonicalArchiveRef(operationalID, entry.ArchivePath)
+	if entry.ArchivePath != "" && !valid {
+		return deletingStateEntry(now, entry, "", fmt.Errorf("state entry archive path is invalid")), false, fmt.Errorf("state entry archive path is invalid")
+	}
+	if archive == "" {
+		live, err := liveRef(operationalID)
 		if err != nil {
 			return entry, false, err
 		}
-
-		if _, err := os.Stat(liveDir); err != nil {
-			if os.IsNotExist(err) {
-				orphanArchiveDir, err := latestArchivedAppDir(destinationRoot, operationalID)
-				if err != nil {
-					return deletingStateEntry(now, entry, "", err), false, err
-				}
-				if orphanArchiveDir != "" {
-					runtime := provisioner.RuntimeContext{
-						OperationalID: operationalID,
-						RuntimeSlug:   entry.RuntimeSlug,
-						LiveDir:       orphanArchiveDir,
-					}
-					if err := p.Delete(ctx, runtime, app); err != nil {
-						// Best-effort cleanup: scrub secrets even if delete fails,
-						// so decrypted material is not left in the orphaned archive.
-						_ = scrubArchivedSecrets(orphanArchiveDir, entry.SecretTargets)
-						return deletingStateEntry(now, entry, orphanArchiveDir, err), false, err
-					}
-				}
-				if err := scrubOrphanedArchivedSecrets(destinationRoot, operationalID, entry.SecretTargets); err != nil {
-					return deletingStateEntry(now, entry, orphanArchiveDir, err), false, err
-				}
-				runtime := provisioner.RuntimeContext{
-					OperationalID: operationalID,
-					RuntimeSlug:   entry.RuntimeSlug,
-					LiveDir:       liveDir,
-				}
-				if err := p.CleanupMissing(ctx, runtime); err != nil {
-					return deletingStateEntry(now, entry, "", err), false, err
-				}
-				return state.Entry{}, true, nil
+		if err := destination.ensureNoSymlinkAncestry(live); err != nil {
+			return entry, false, err
+		}
+		if _, err := destination.root.Lstat(live); os.IsNotExist(err) {
+			archive, err = latestArchivedAppRef(destination, operationalID)
+			if err != nil {
+				return deletingStateEntry(now, entry, "", err), false, err
 			}
-			return entry, false, fmt.Errorf("stat live dir %q: %w", liveDir, err)
+			if archive != "" {
+				if err := deleteAndScrub(ctx, destination, archive, operationalID, entry, p, app); err != nil {
+					return deletingStateEntry(now, entry, archive, err), false, err
+				}
+			}
+			if scrubErr := scrubOrphanedArchivedSecrets(destination, operationalID, entry.SecretTargets); scrubErr != nil {
+				return deletingStateEntry(now, entry, archive, scrubErr), false, scrubErr
+			}
+			if err := p.CleanupMissing(ctx, provisioner.RuntimeContext{OperationalID: operationalID, RuntimeSlug: entry.RuntimeSlug, LiveDir: destination.absolute(live)}); err != nil {
+				return deletingStateEntry(now, entry, "", err), false, err
+			}
+			return state.Entry{}, true, nil
+		} else if err != nil {
+			return entry, false, fmt.Errorf("stat rooted live app: %w", err)
 		}
-
-		deleteDir, err = archiveAppDir(destinationRoot, operationalID, now)
+		archive, err = archiveRef(operationalID, now)
 		if err != nil {
 			return entry, false, err
 		}
-		if err := renameOrCopy(liveDir, deleteDir); err != nil {
-			return entry, false, fmt.Errorf("archiving live dir %q to %q: %w", liveDir, deleteDir, err)
+		if err := destination.ensureNoSymlinkAncestry(archive); err != nil {
+			return entry, false, err
+		}
+		if err := destination.root.MkdirAll(filepath.Dir(archive), 0o755); err != nil {
+			return entry, false, err
+		}
+		if err := destination.root.Rename(live, archive); err != nil {
+			return entry, false, fmt.Errorf("archiving rooted live app: %w", err)
 		}
 	}
-
-	runtime := provisioner.RuntimeContext{
-		OperationalID: operationalID,
-		RuntimeSlug:   entry.RuntimeSlug,
-		LiveDir:       deleteDir,
+	if err := deleteAndScrub(ctx, destination, archive, operationalID, entry, p, app); err != nil {
+		return deletingStateEntry(now, entry, archive, err), false, err
 	}
-	if err := p.Delete(ctx, runtime, app); err != nil {
-		scrubErr := scrubArchivedSecrets(deleteDir, entry.SecretTargets)
-		if scrubErr != nil {
-			return deletingStateEntry(now, entry, deleteDir, fmt.Errorf("delete failed: %w; scrub archived secrets: %v", err, scrubErr)), false, err
-		}
-		return deletingStateEntry(now, entry, deleteDir, err), false, err
+	if err := scrubOrphanedArchivedSecrets(destination, operationalID, entry.SecretTargets); err != nil {
+		return deletingStateEntry(now, entry, archive, err), false, err
 	}
-	if err := p.CleanupMissing(ctx, runtime); err != nil {
-		scrubErr := scrubArchivedSecrets(deleteDir, entry.SecretTargets)
-		if scrubErr != nil {
-			combinedErr := fmt.Errorf("cleanup missing failed: %w; scrub archived secrets: %v", err, scrubErr)
-			return deletingStateEntry(now, entry, deleteDir, combinedErr), false, combinedErr
-		}
-		return deletingStateEntry(now, entry, deleteDir, err), false, err
-	}
-	if err := scrubArchivedSecrets(deleteDir, entry.SecretTargets); err != nil {
-		return deletingStateEntry(now, entry, deleteDir, err), false, err
-	}
-
 	return state.Entry{}, true, nil
 }
 
-func scrubArchivedSecrets(archiveDir string, secretTargets []string) error {
-	cleanArchiveDir := filepath.Clean(archiveDir)
-	for _, target := range secretTargets {
-		archivePath := filepath.Clean(filepath.Join(cleanArchiveDir, filepath.FromSlash(target)))
-
-		// Resolve symlinks to prevent path traversal attacks:
-		// a symlinked parent (e.g. "secrets -> /etc") under the archive dir
-		// MUST NOT cause deletion outside the archive root.
-		resolvedPath, err := filepath.EvalSymlinks(archivePath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue // already gone, nothing to scrub
-			}
-			return fmt.Errorf("resolving archived secret target %q under %q: %w", target, archiveDir, err)
-		}
-
-		// Verify that the resolved path is inside the archive directory.
-		// Note: there is a TOCTOU window between EvalSymlinks and Remove;
-		// a fully robust fix would use os.Remove on an O_NOFOLLOW fd.
-		parentPrefix := cleanArchiveDir + string(filepath.Separator)
-		if !strings.HasPrefix(resolvedPath, parentPrefix) && resolvedPath != cleanArchiveDir {
-			return fmt.Errorf("archived secret target %q resolved outside archive dir: %q -> %q", target, archivePath, resolvedPath)
-		}
-
-		if err := os.Remove(resolvedPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove archived secret target %q: %w", target, err)
-		}
-	}
-	return nil
-}
-
-func latestArchivedAppDir(destinationRoot string, operationalID string) (string, error) {
-	archiveRoot, err := archiveAppRoot(destinationRoot, operationalID)
-	if err != nil {
-		return "", err
-	}
-	entries, err := os.ReadDir(archiveRoot)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", fmt.Errorf("reading archive root %q: %w", archiveRoot, err)
-	}
-	archiveDirs := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		archiveDirs = append(archiveDirs, filepath.Join(archiveRoot, entry.Name()))
-	}
-	if len(archiveDirs) == 0 {
-		return "", nil
-	}
-	sort.Strings(archiveDirs)
-	return archiveDirs[len(archiveDirs)-1], nil
-}
-
-func scrubOrphanedArchivedSecrets(destinationRoot string, operationalID string, secretTargets []string) error {
-	archiveRoot, err := archiveAppRoot(destinationRoot, operationalID)
-	if err != nil {
+func deleteAndScrub(ctx context.Context, destination *destinationFS, archive, operationalID string, entry state.Entry, p provisioner.Provisioner, app application.Application) error {
+	runtime := provisioner.RuntimeContext{OperationalID: operationalID, RuntimeSlug: entry.RuntimeSlug, LiveDir: destination.absolute(archive)}
+	// This is intentionally immediately adjacent to the subprocess call. The
+	// provisioner receives an absolute path, so an attacker with destination
+	// write access can still replace it after this check and before the child
+	// process opens it; os.Root cannot eliminate that external-process TOCTOU.
+	if err := destination.validateArchiveDirectory(archive); err != nil {
 		return err
 	}
-	entries, err := os.ReadDir(archiveRoot)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
+	if err := p.Delete(ctx, runtime, app); err != nil {
+		if scrubErr := scrubArchivedSecrets(destination, archive, entry.SecretTargets); scrubErr != nil {
+			return fmt.Errorf("delete failed: %w; scrub archived secrets: %v", err, scrubErr)
 		}
-		return fmt.Errorf("reading archive root %q: %w", archiveRoot, err)
+		return err
 	}
-	archiveDirs := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	if err := destination.validateArchiveDirectory(archive); err != nil {
+		return err
+	}
+	if err := p.CleanupMissing(ctx, runtime); err != nil {
+		if scrubErr := scrubArchivedSecrets(destination, archive, entry.SecretTargets); scrubErr != nil {
+			return fmt.Errorf("cleanup missing failed: %w; scrub archived secrets: %v", err, scrubErr)
 		}
-		archiveDirs = append(archiveDirs, filepath.Join(archiveRoot, entry.Name()))
+		return err
 	}
-	sort.Strings(archiveDirs)
-	for _, archiveDir := range archiveDirs {
-		if err := scrubArchivedSecrets(archiveDir, secretTargets); err != nil {
+	return scrubArchivedSecrets(destination, archive, entry.SecretTargets)
+}
+
+func scrubArchivedSecrets(destination *destinationFS, archive string, targets []string) error {
+	if err := destination.validateArchiveDirectory(archive); err != nil {
+		return err
+	}
+	for _, target := range targets {
+		if err := scrubArchivedFile(destination, archive, target); err != nil {
 			return err
 		}
 	}
+	return scrubArchivedFile(destination, archive, ".registry-password")
+}
+
+func scrubArchivedFile(destination *destinationFS, archive, target string) error {
+	ref := filepath.Join(archive, filepath.FromSlash(target))
+	if err := destination.ensureNoSymlinkAncestry(ref); err != nil {
+		return fmt.Errorf("scrubbing archived sensitive file %q: %w", target, err)
+	}
+	if err := destination.root.Remove(ref); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove archived sensitive file %q: %w", target, err)
+	}
 	return nil
 }
 
-// renameOrCopy tries os.Rename first and falls back to recursive copy
-// when the source and destination are on different filesystems.
-func renameOrCopy(src, dst string) error {
-	err := os.Rename(src, dst)
-	if err == nil {
+func latestArchivedAppRef(destination *destinationFS, operationalID string) (string, error) {
+	prefix, err := liveRef(operationalID)
+	if err != nil {
+		return "", err
+	}
+	root := filepath.Join("archive", prefix)
+	if err := destination.ensureNoSymlinkAncestry(root); err != nil {
+		return "", err
+	}
+	entries, err := destination.readDir(root)
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var refs []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			if ref, ok := canonicalArchiveRef(operationalID, filepath.Join(root, entry.Name())); ok {
+				refs = append(refs, ref)
+			}
+		}
+	}
+	sort.Strings(refs)
+	if len(refs) == 0 {
+		return "", nil
+	}
+	return refs[len(refs)-1], nil
+}
+
+func scrubOrphanedArchivedSecrets(destination *destinationFS, operationalID string, targets []string) error {
+	prefix, err := liveRef(operationalID)
+	if err != nil {
+		return err
+	}
+	root := filepath.Join("archive", prefix)
+	entries, err := destination.readDir(root)
+	if os.IsNotExist(err) {
 		return nil
 	}
-	if !isCrossDeviceLink(err) {
+	if err != nil {
 		return err
 	}
-	if err := copyDir(src, dst); err != nil {
-		return err
-	}
-	return os.RemoveAll(src)
-}
-
-func isCrossDeviceLink(err error) bool {
-	return strings.Contains(err.Error(), "invalid cross-device link") ||
-		strings.Contains(err.Error(), "cross-device link")
-}
-
-func copyDir(src, dst string) error {
-	srcInfo, err := os.Stat(src)
-	if err != nil {
-		return fmt.Errorf("stat source %q: %w", src, err)
-	}
-	if !srcInfo.IsDir() {
-		return fmt.Errorf("source %q is not a directory", src)
-	}
-
-	if err := os.MkdirAll(dst, srcInfo.Mode()); err != nil {
-		return fmt.Errorf("creating destination %q: %w", dst, err)
-	}
-
-	return filepath.Walk(src, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	for _, entry := range entries {
+		if ref, ok := canonicalArchiveRef(operationalID, filepath.Join(root, entry.Name())); ok {
+			if err := scrubArchivedSecrets(destination, ref, targets); err != nil {
+				return err
+			}
 		}
-
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return fmt.Errorf("rel path for %q: %w", path, err)
-		}
-		dstPath := filepath.Join(dst, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, info.Mode())
-		}
-		return copyFile(path, dstPath, info.Mode())
-	})
-}
-
-func copyFile(src, dst string, mode os.FileMode) error {
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("open source %q: %w", src, err)
 	}
-	defer func() {
-		_ = srcFile.Close()
-	}()
-
-	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
-	if err != nil {
-		return fmt.Errorf("create destination %q: %w", dst, err)
-	}
-	defer func() {
-		_ = dstFile.Close()
-	}()
-
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("copy %q to %q: %w", src, dst, err)
-	}
-	if err := dstFile.Chmod(mode.Perm()); err != nil {
-		return fmt.Errorf("set mode on copied file %q: %w", dst, err)
-	}
-	return dstFile.Close()
+	return nil
 }

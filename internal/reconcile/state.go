@@ -24,6 +24,7 @@ func desiredStateEntry(now time.Time, app application.DiscoveredApplication, res
 		Provisioner:                  app.Application.Spec.Provisioner,
 		ComposeFiles:                 append([]string(nil), app.Application.Spec.ComposeFiles...),
 		SecretTargets:                secretTargetsForState(app),
+		SecretTargetsKnown:           true,
 	}
 	return entry
 }
@@ -57,22 +58,57 @@ func deletingStateEntry(now time.Time, existing state.Entry, archivePath string,
 	return entry
 }
 
-func appFromState(entry state.Entry) (application.Application, error) {
+func appFromState(operationalID string, entry state.Entry) (application.Application, error) {
+	expectedRuntimeSlug, err := application.SlugFromIdentityPath(operationalID)
+	if err != nil {
+		return application.Application{}, fmt.Errorf("validating operational identity %q: %w", operationalID, err)
+	}
+	if entry.RuntimeSlug != expectedRuntimeSlug {
+		return application.Application{}, fmt.Errorf("state runtime slug %q does not match operational identity %q", entry.RuntimeSlug, operationalID)
+	}
 	if entry.Provisioner == "" {
 		return application.Application{}, fmt.Errorf("state entry provisioner is required")
 	}
-	if len(entry.ComposeFiles) == 0 {
-		return application.Application{}, fmt.Errorf("state entry compose files are required")
+	composeFiles, err := canonicalStatePaths("compose files", entry.ComposeFiles, true)
+	if err != nil {
+		return application.Application{}, err
+	}
+	if !entry.SecretTargetsKnown {
+		return application.Application{}, fmt.Errorf("state entry secret target inventory is unavailable")
+	}
+	secretTargets, err := canonicalStatePaths("secret targets", entry.SecretTargets, false)
+	if err != nil {
+		return application.Application{}, err
 	}
 
 	return application.Application{
 		Metadata: application.Metadata{Name: entry.ApplicationName},
 		Spec: application.Spec{
 			Provisioner:  entry.Provisioner,
-			ComposeFiles: append([]string(nil), entry.ComposeFiles...),
-			Secrets:      secretsFromTargets(entry.SecretTargets),
+			ComposeFiles: composeFiles,
+			Secrets:      secretsFromTargets(secretTargets),
 		},
 	}, nil
+}
+
+func canonicalStatePaths(name string, paths []string, required bool) ([]string, error) {
+	if required && len(paths) == 0 {
+		return nil, fmt.Errorf("state entry %s are required", name)
+	}
+	canonical := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for i, path := range paths {
+		normalized, err := application.CanonicalRelativePath(path)
+		if err != nil {
+			return nil, fmt.Errorf("state entry %s[%d]: %w", name, i, err)
+		}
+		if _, ok := seen[normalized]; ok {
+			return nil, fmt.Errorf("state entry %s[%d]: duplicate path %q", name, i, path)
+		}
+		seen[normalized] = struct{}{}
+		canonical = append(canonical, normalized)
+	}
+	return canonical, nil
 }
 
 func secretTargetsForState(app application.DiscoveredApplication) []string {

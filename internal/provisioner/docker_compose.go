@@ -2,6 +2,7 @@ package provisioner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -75,10 +76,21 @@ func (p *DockerCompose) Apply(ctx context.Context, runtime RuntimeContext, app a
 func (p *DockerCompose) dockerLogin(ctx context.Context, runtime RuntimeContext, app application.Application) error {
 	creds := app.Spec.RegistryCredentials
 
-	// Read decrypted password from temp file
+	// Remove the promoted plaintext credential regardless of whether login or
+	// reading the file succeeds. It is only needed as docker's stdin.
+	removePassword := func() error {
+		if err := os.Remove(runtime.RegistryPasswordPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("removing decrypted registry password: %w", err)
+		}
+		return nil
+	}
+
 	passwordBytes, err := os.ReadFile(runtime.RegistryPasswordPath)
 	if err != nil {
-		return fmt.Errorf("reading registry password: %w", err)
+		return errors.Join(
+			fmt.Errorf("reading decrypted registry password: %w", err),
+			removePassword(),
+		)
 	}
 	password := strings.TrimSpace(string(passwordBytes))
 
@@ -90,7 +102,14 @@ func (p *DockerCompose) dockerLogin(ctx context.Context, runtime RuntimeContext,
 		creds.Registry,
 	}
 
-	return p.runner.RunWithStdin(ctx, runtime.LiveDir, password, "docker", args...)
+	loginErr := p.runner.RunWithStdin(ctx, runtime.LiveDir, password, "docker", args...)
+	removeErr := removePassword()
+	if loginErr != nil {
+		// Command stderr is not trusted to avoid echoing credentials, including
+		// from a malicious registry endpoint, into caller errors or logs.
+		return errors.Join(errors.New("docker login command failed"), removeErr)
+	}
+	return removeErr
 }
 
 // Delete tears down the compose project using the archived or live app directory.

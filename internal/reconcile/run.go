@@ -117,7 +117,6 @@ func (r *Runner) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
 	repoRoot := filepath.Join(validatedRun.configRoot, "repo")
 	repo, err := newGitRepository(repoRoot, manifestSource.repoURL)
 	if err != nil {
@@ -182,6 +181,18 @@ func (r *Runner) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := validateOperationalIDNamespace(discoveredApplications, stateFile); err != nil {
+		return err
+	}
+	destination, err := openDestinationFS(manifestSource.destination)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := destination.Close(); closeErr != nil {
+			r.logger.Warn("Closing destination root failed", "error", closeErr)
+		}
+	}()
 
 	discoveredByID := make(discoveredAppSet, len(discoveredApplications))
 
@@ -198,7 +209,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			"metadataName", app.Application.Metadata.Name,
 		)
 
-		appEntry, appErr := r.prepareAppRuntime(ctx, validatedRun.agePath, manifestSource.destination, submodulePaths, app)
+		appEntry, appErr := r.prepareAppRuntime(ctx, validatedRun.agePath, destination, submodulePaths, app)
 		if appErr != nil {
 			stateFile.Applications[app.OperationalID] = failedStateEntry(now, stateFile.Applications[app.OperationalID], app, "", appErr)
 			if saveErr := stateStore.Save(stateFile); saveErr != nil {
@@ -243,7 +254,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			continue
 		}
 
-		if err := r.applyApp(ctx, manifestSource.destination, appEntry); err != nil {
+		if err := r.applyApp(ctx, destination, appEntry); err != nil {
 			if cleanupErr := appEntry.stagingDone(); cleanupErr != nil {
 				r.logger.Warn("App staging cleanup failed", "operationalID", app.OperationalID, "error", cleanupErr)
 			}
@@ -270,7 +281,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			continue
 		}
 
-		updatedEntry, removeEntry, err := reconcileDeletedApp(ctx, manifestSource.destination, operationalID, entry, p, now)
+		updatedEntry, removeEntry, err := reconcileDeletedApp(ctx, destination, operationalID, entry, p, now)
 		if err != nil {
 			stateFile.Applications[operationalID] = updatedEntry
 			if saveErr := stateStore.Save(stateFile); saveErr != nil {
@@ -302,7 +313,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runner) prepareAppRuntime(ctx context.Context, agePath string, destinationRoot string, submodulePaths []string, app application.DiscoveredApplication) (appRuntime, error) {
+func (r *Runner) prepareAppRuntime(ctx context.Context, agePath string, destination *destinationFS, submodulePaths []string, app application.DiscoveredApplication) (appRuntime, error) {
 	fileset, err := application.BuildFileSet(app, submodulePaths)
 	if err != nil {
 		return appRuntime{}, err
@@ -313,7 +324,7 @@ func (r *Runner) prepareAppRuntime(ctx context.Context, agePath string, destinat
 		return appRuntime{}, err
 	}
 
-	drift, err := detectDrift(destinationRoot, app, fileset, staging)
+	drift, err := detectRootedDrift(destination, app, fileset, staging)
 	if err != nil {
 		cleanupErr := cleanup()
 		if cleanupErr != nil {
@@ -331,7 +342,7 @@ func (r *Runner) prepareAppRuntime(ctx context.Context, agePath string, destinat
 	}, nil
 }
 
-func (r *Runner) applyApp(ctx context.Context, destinationRoot string, runtime appRuntime) error {
+func (r *Runner) applyApp(ctx context.Context, destination *destinationFS, runtime appRuntime) error {
 	p := r.provisioners[runtime.app.Application.Spec.Provisioner]
 	if p == nil {
 		return fmt.Errorf("unsupported provisioner %q", runtime.app.Application.Spec.Provisioner)
@@ -347,10 +358,11 @@ func (r *Runner) applyApp(ctx context.Context, destinationRoot string, runtime a
 		return fmt.Errorf("validating provisioner %q: %w", p.Name(), err)
 	}
 
-	liveDir, err := promoteStagingToLive(destinationRoot, runtime.app, runtime.staging)
+	liveRef, err := promoteRootedStagingToLive(destination, runtime.app, runtime.staging)
 	if err != nil {
 		return err
 	}
+	liveDir := destination.absolute(liveRef)
 	runtime.staging.Root = liveDir
 
 	// Update registry password path relative to new live dir
@@ -405,6 +417,47 @@ func sortedDeletedOperationalIDs(stateFile state.File, discoveredByID discovered
 	}
 	sort.Strings(deleted)
 	return deleted
+}
+
+// validateOperationalIDNamespace rejects overlapping application trees and runtime
+// slugs before any staging, destination mutation, or provisioner invocation.
+func validateOperationalIDNamespace(discovered []application.DiscoveredApplication, stateFile state.File) error {
+	ids := make(map[string]struct{}, len(discovered)+len(stateFile.Applications))
+	for _, app := range discovered {
+		ids[app.OperationalID] = struct{}{}
+	}
+	for id := range stateFile.Applications {
+		ids[id] = struct{}{}
+	}
+	ordered := make([]string, 0, len(ids))
+	for id := range ids {
+		ordered = append(ordered, id)
+	}
+	sort.Strings(ordered)
+
+	slugs := make(map[string]string, len(ordered))
+	for _, id := range ordered {
+		if err := application.ValidateIdentityPath(id); err != nil {
+			return fmt.Errorf("invalid operational identity %q in reconcile namespace: %w", id, err)
+		}
+		if id == "archive" || strings.HasPrefix(id, "archive/") {
+			return fmt.Errorf("operational identity %q conflicts with reserved archive namespace", id)
+		}
+		slug, err := application.SlugFromIdentityPath(id)
+		if err != nil {
+			return fmt.Errorf("deriving runtime slug for operational identity %q: %w", id, err)
+		}
+		if otherID, ok := slugs[slug]; ok {
+			return fmt.Errorf("runtime slug collision between %q and %q: %q", otherID, id, slug)
+		}
+		slugs[slug] = id
+	}
+	for i := 0; i < len(ordered)-1; i++ {
+		if strings.HasPrefix(ordered[i+1], ordered[i]+"/") {
+			return fmt.Errorf("operational identity collision between %q and %q", ordered[i], ordered[i+1])
+		}
+	}
+	return nil
 }
 
 func submodulePathsUnderDiscoveryRoot(submodulePaths []string, discoveryRoot string, repoRoot string) ([]string, error) {

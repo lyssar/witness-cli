@@ -164,3 +164,9 @@ func normalizeRelativePath(pathValue string) (string, error) {
 
 	return filepath.ToSlash(cleaned), nil
 }
+
+// CanonicalRelativePath validates and returns a canonical slash-separated path
+// relative to an application root.
+func CanonicalRelativePath(pathValue string) (string, error) {
+	return normalizeRelativePath(pathValue)
+}

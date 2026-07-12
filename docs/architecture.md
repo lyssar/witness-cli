@@ -97,10 +97,25 @@ does not change Docker Compose secret semantics.
 
 When an application is removed from the repository:
 
-1. The runtime directory is **archived** (timestamped backup)
+1. The runtime directory is **archived** at
+   `<destination>/archive/<operationalID>/<timestamp>`
 2. The provisioner runs `docker compose down` to tear down the application
-3. Any `.age` files in the archive are **scrubbed** — overwritten with zeros
-4. Scrubbing uses `filepath.EvalSymlinks` to prevent symlink-based path traversal
+3. Each declared decrypted secret target and the transient decrypted registry
+   password are **removed** from the archive
+4. Before deletion or scrubbing, the archive reference must be canonical and
+   resolve through the destination `os.Root` to a non-symlink directory. State
+   without an explicit complete secret-target inventory fails closed.
+
+The archive is revalidated immediately before each provisioner invocation.
+This narrows, but cannot fully eliminate, the TOCTOU boundary for a provisioner
+subprocess because it receives an absolute directory path and may open it after
+the validation completes. `os.Root` continues to confine Witness's own file
+operations.
+
+For private registries, Witness passes the decrypted password to `docker login`
+through stdin and removes the promoted plaintext file immediately afterward,
+whether login succeeds or fails. Login command output is not propagated in
+errors so it cannot disclose the password.
 
 ## Security Model
 
@@ -108,7 +123,7 @@ When an application is removed from the repository:
 |---|---|
 | **Repository** | No plaintext secrets — only age-encrypted files |
 | **Logging** | Git URLs sanitized before logging (credentials stripped) |
-| **Cleanup** | Symlink-safe via `EvalSymlinks` + prefix path check |
+| **Cleanup** | Rooted archive operations with symlink ancestry and final-directory checks |
 | **Systemd** | `NoNewPrivileges`, `ProtectHome`, `PrivateTmp`, system call filtering |
 | **Deploy** | SSH-only — no open ports beyond SSH and deployed services |
 

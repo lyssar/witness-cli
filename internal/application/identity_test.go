@@ -59,3 +59,37 @@ func TestBuildIdentityRejectsInvalidSegments(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestBuildIdentityRejectsReservedArchiveSegment(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	appDir := filepath.Join(root, "archive", "hello")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatalf("create app directory: %v", err)
+	}
+
+	_, err := BuildIdentity(root, appDir)
+	if err == nil {
+		t.Fatal("expected reserved segment error")
+	}
+	if !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateIdentityPathRejectsReservedArchiveSegment(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range []string{"archive", "archive/hello"} {
+		t.Run(path, func(t *testing.T) {
+			err := ValidateIdentityPath(path)
+			if err == nil {
+				t.Fatal("expected reserved segment error")
+			}
+			if !strings.Contains(err.Error(), "reserved") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}

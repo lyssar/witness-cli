@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	s "strings"
 
 	"github.com/lyssar/witness-cli/internal/application"
 )
@@ -23,8 +22,24 @@ type DriftResult struct {
 }
 
 func detectDrift(destinationRoot string, app application.DiscoveredApplication, fileset application.FileSet, staging AppStaging) (DriftResult, error) {
-	liveAppDir, err := safeJoinUnder(destinationRoot, filepath.FromSlash(app.OperationalID))
+	destination, err := openDestinationFS(destinationRoot)
 	if err != nil {
+		return DriftResult{}, err
+	}
+	defer func() {
+		if closeErr := destination.Close(); closeErr != nil {
+			return
+		}
+	}()
+	return detectRootedDrift(destination, app, fileset, staging)
+}
+
+func detectRootedDrift(destination *destinationFS, app application.DiscoveredApplication, fileset application.FileSet, staging AppStaging) (DriftResult, error) {
+	liveAppDir, err := liveRef(app.OperationalID)
+	if err != nil {
+		return DriftResult{}, err
+	}
+	if err := destination.ensureNoSymlinkAncestry(liveAppDir); err != nil {
 		return DriftResult{}, err
 	}
 
@@ -33,7 +48,7 @@ func detectDrift(destinationRoot string, app application.DiscoveredApplication, 
 		Warnings:              append([]application.FilesetWarning(nil), fileset.Warnings...),
 	}
 
-	liveInfo, err := os.Stat(liveAppDir)
+	liveInfo, err := destination.root.Stat(liveAppDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			for _, f := range fileset.ManagedFiles {
@@ -43,7 +58,7 @@ func detectDrift(destinationRoot string, app application.DiscoveredApplication, 
 			result.HasDrift = len(result.Missing) > 0 || len(result.SecretChanged) > 0
 			return result, nil
 		}
-		return DriftResult{}, fmt.Errorf("stat live app dir %q: %w", liveAppDir, err)
+		return DriftResult{}, fmt.Errorf("stat rooted live app dir %q: %w", liveAppDir, err)
 	}
 
 	if !liveInfo.IsDir() {
@@ -60,7 +75,7 @@ func detectDrift(destinationRoot string, app application.DiscoveredApplication, 
 		}
 
 		livePath := filepath.Join(liveAppDir, filepath.FromSlash(managed.RelativePath))
-		liveEntry, err := os.Lstat(livePath)
+		liveEntry, err := destination.root.Lstat(livePath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				result.Missing = append(result.Missing, managed.RelativePath)
@@ -74,7 +89,7 @@ func detectDrift(destinationRoot string, app application.DiscoveredApplication, 
 			continue
 		}
 
-		same, err := filesEqual(stagedPath, livePath)
+		same, err := filesEqualRooted(stagedPath, destination, livePath)
 		if err != nil {
 			return DriftResult{}, fmt.Errorf("comparing %q: %w", managed.RelativePath, err)
 		}
@@ -95,7 +110,7 @@ func detectDrift(destinationRoot string, app application.DiscoveredApplication, 
 		}
 
 		livePath := filepath.Join(liveAppDir, filepath.FromSlash(secretTarget))
-		liveEntry, err := os.Lstat(livePath)
+		liveEntry, err := destination.root.Lstat(livePath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				result.SecretChanged = append(result.SecretChanged, secretTarget)
@@ -109,7 +124,7 @@ func detectDrift(destinationRoot string, app application.DiscoveredApplication, 
 			continue
 		}
 
-		same, err := filesEqual(stagedPath, livePath)
+		same, err := filesEqualRooted(stagedPath, destination, livePath)
 		if err != nil {
 			return DriftResult{}, fmt.Errorf("comparing secret %q: %w", secretTarget, err)
 		}
@@ -122,17 +137,7 @@ func detectDrift(destinationRoot string, app application.DiscoveredApplication, 
 	return result, nil
 }
 
-func safeJoinUnder(base, relative string) (string, error) {
-	joined := filepath.Join(base, relative)
-	cleanBase := filepath.Clean(base)
-	cleanJoined := filepath.Clean(joined)
-	if cleanJoined != cleanBase && !s.HasPrefix(cleanJoined, cleanBase+string(filepath.Separator)) {
-		return "", fmt.Errorf("path %q escapes base %q", relative, base)
-	}
-	return cleanJoined, nil
-}
-
-func filesEqual(pathA, pathB string) (bool, error) {
+func filesEqualRooted(pathA string, destination *destinationFS, pathB string) (bool, error) {
 	fileA, err := os.Open(pathA)
 	if err != nil {
 		return false, fmt.Errorf("open %q: %w", pathA, err)
@@ -141,7 +146,7 @@ func filesEqual(pathA, pathB string) (bool, error) {
 		_ = fileA.Close()
 	}()
 
-	fileB, err := os.Open(pathB)
+	fileB, err := destination.root.Open(pathB)
 	if err != nil {
 		return false, fmt.Errorf("open %q: %w", pathB, err)
 	}

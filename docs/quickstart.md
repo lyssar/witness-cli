@@ -128,8 +128,11 @@ witness reconcile ~/.config/witness/my-observer/
 │       ├── docker-compose.yaml
 │       ├── .env
 │       └── data/
-└── archives/
-    └── hello-2026-04-25T12-30-00Z.tar.gz
+└── archive/
+    └── hello/
+        └── 20260425T123000.000000000Z/  # Archived runtime directory
+            ├── docker-compose.yaml
+            └── data/
 ```
 
 ---

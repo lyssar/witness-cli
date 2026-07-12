@@ -47,6 +47,9 @@ func ValidateIdentityPath(relativePath string) error {
 	}
 
 	segments := strings.Split(normalized, "/")
+	if segments[0] == "archive" {
+		return fmt.Errorf("identity path first segment %q is reserved", segments[0])
+	}
 	for _, segment := range segments {
 		if !identitySegmentPattern.MatchString(segment) {
 			return fmt.Errorf("identity path segment %q is invalid", segment)
