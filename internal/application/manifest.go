@@ -22,6 +22,9 @@ func LoadManifest(manifestPath string) (Application, error) {
 	if err != nil {
 		return app, fmt.Errorf("reading manifest %q: %w", manifestPath, err)
 	}
+	if err := validateExplicitSecretModes(content); err != nil {
+		return app, fmt.Errorf("decoding manifest %q: %w", manifestPath, err)
+	}
 
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
 	decoder.KnownFields(true)
@@ -38,6 +41,56 @@ func LoadManifest(manifestPath string) (Application, error) {
 	}
 
 	return app, nil
+}
+
+func validateExplicitSecretModes(content []byte) error {
+	var document yaml.Node
+	if err := yaml.Unmarshal(content, &document); err != nil {
+		return err
+	}
+	if len(document.Content) == 0 {
+		return nil
+	}
+
+	spec := mappingValue(document.Content[0], "spec")
+	if spec == nil {
+		return nil
+	}
+	secrets := mappingValue(spec, "secrets")
+	if secrets == nil || secrets.Kind != yaml.SequenceNode {
+		return nil
+	}
+
+	for _, secret := range secrets.Content {
+		mode := mappingValue(secret, "mode")
+		if mode == nil {
+			continue
+		}
+
+		var parsed SecretMode
+		if err := parsed.UnmarshalYAML(mode); err != nil {
+			return err
+		}
+		if parsed.value == "" {
+			return fmt.Errorf("mode must be a quoted canonical octal string matching 0[0-7]{3}")
+		}
+	}
+
+	return nil
+}
+
+func mappingValue(node *yaml.Node, key string) *yaml.Node {
+	if node.Kind != yaml.MappingNode {
+		return nil
+	}
+
+	for i := 0; i < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			return node.Content[i+1]
+		}
+	}
+
+	return nil
 }
 
 // ParseManifest loads and validates one Application manifest.

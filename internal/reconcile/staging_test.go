@@ -99,6 +99,7 @@ func TestBuildAppStagingDecryptsSecrets(t *testing.T) {
 			Source:    "secret.age",
 			Target:    "secrets/.env",
 			Decryptor: application.DecryptorAge,
+			Mode:      application.NewSecretMode("0444"),
 		}}}},
 	}
 
@@ -126,13 +127,13 @@ func TestBuildAppStagingDecryptsSecrets(t *testing.T) {
 		t.Fatalf("unexpected secret content: %q", string(content))
 	}
 
-	// Decrypted secret files must be 0600.
+	// Decrypted secret files must retain their resolved manifest mode.
 	secretInfo, err := os.Stat(secretTarget)
 	if err != nil {
 		t.Fatalf("stat secret: %v", err)
 	}
-	if got := secretInfo.Mode().Perm(); got != 0o600 {
-		t.Fatalf("expected secret mode 0600, got %o", got)
+	if got := secretInfo.Mode().Perm(); got != 0o444 {
+		t.Fatalf("expected secret mode 0444, got %o", got)
 	}
 }
 
@@ -168,5 +169,44 @@ func TestBuildAppStagingRejectsUnknownDecryptor(t *testing.T) {
 	}
 	if got := err.Error(); !bytes.Contains([]byte(got), []byte("decryptor \"age\" is required")) {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPromoteStagingToLivePreservesSecretModeAndHardensAppRoot(t *testing.T) {
+	t.Parallel()
+
+	stagingRoot := t.TempDir()
+	secretPath := filepath.Join(stagingRoot, "secrets", "token")
+	if err := os.MkdirAll(filepath.Dir(secretPath), 0o700); err != nil {
+		t.Fatalf("create secret parent: %v", err)
+	}
+	if err := os.WriteFile(secretPath, []byte("secret"), 0o444); err != nil {
+		t.Fatalf("write secret: %v", err)
+	}
+	if err := os.Chmod(secretPath, 0o444); err != nil {
+		t.Fatalf("set secret mode: %v", err)
+	}
+	if err := os.Chmod(stagingRoot, 0o755); err != nil {
+		t.Fatalf("relax staging root for promotion assertion: %v", err)
+	}
+
+	liveDir, err := promoteStagingToLive(filepath.Join(t.TempDir(), "apps"), application.DiscoveredApplication{OperationalID: "hello"}, AppStaging{Root: stagingRoot})
+	if err != nil {
+		t.Fatalf("promote staging: %v", err)
+	}
+
+	liveInfo, err := os.Stat(liveDir)
+	if err != nil {
+		t.Fatalf("stat live app root: %v", err)
+	}
+	if got := liveInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("expected live app root mode 0700, got %o", got)
+	}
+	secretInfo, err := os.Stat(filepath.Join(liveDir, "secrets", "token"))
+	if err != nil {
+		t.Fatalf("stat promoted secret: %v", err)
+	}
+	if got := secretInfo.Mode().Perm(); got != 0o444 {
+		t.Fatalf("expected promoted secret mode 0444, got %o", got)
 	}
 }

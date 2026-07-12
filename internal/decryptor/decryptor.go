@@ -1,6 +1,9 @@
 package decryptor
 
-import "context"
+import (
+	"context"
+	"os"
+)
 
 // Request describes one decryption unit.
 type Request struct {
@@ -8,6 +11,7 @@ type Request struct {
 	KeyPath       string
 	SourcePath    string
 	TargetPath    string
+	Mode          os.FileMode
 }
 
 // Decryptor defines the stable decryption contract for manifest secret entries.

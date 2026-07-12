@@ -67,6 +67,10 @@ func buildAppStaging(ctx context.Context, ageKeyPath string, decryptors map[stri
 
 func stageSecrets(ctx context.Context, ageKeyPath string, decryptors map[string]decryptor.Decryptor, root string, app application.DiscoveredApplication) error {
 	for _, secret := range app.Application.Spec.Secrets {
+		mode, err := secret.ResolvedMode()
+		if err != nil {
+			return fmt.Errorf("resolving mode for secret %q: %w", secret.Target, err)
+		}
 		decrypt := decryptors[secret.Decryptor]
 		if decrypt == nil {
 			return fmt.Errorf("decryptor %q is required for app %q", secret.Decryptor, app.OperationalID)
@@ -78,6 +82,7 @@ func stageSecrets(ctx context.Context, ageKeyPath string, decryptors map[string]
 			KeyPath:       ageKeyPath,
 			SourcePath:    sourcePath,
 			TargetPath:    targetPath,
+			Mode:          mode,
 		}); err != nil {
 			return fmt.Errorf("decrypting secret %q to %q: %w", secret.Source, secret.Target, err)
 		}
@@ -110,6 +115,7 @@ func stageRegistryPassword(ctx context.Context, ageKeyPath string, decryptors ma
 		KeyPath:       ageKeyPath,
 		SourcePath:    encryptedPath,
 		TargetPath:    targetPath,
+		Mode:          0o600,
 	}); err != nil {
 		return "", fmt.Errorf("decrypting registry password: %w", err)
 	}

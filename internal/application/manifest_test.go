@@ -329,3 +329,74 @@ spec:
 		})
 	}
 }
+
+func TestParseManifestSecretModes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		mode      string
+		want      os.FileMode
+		wantError bool
+	}{
+		{name: "missing defaults to 0600", want: 0o600},
+		{name: "empty double quoted mode rejected", mode: `mode: ""`, wantError: true},
+		{name: "empty single quoted mode rejected", mode: "mode: ''", wantError: true},
+		{name: "quoted container readable mode", mode: `mode: "0444"`, want: 0o444},
+		{name: "unquoted mode rejected", mode: "mode: 0600", wantError: true},
+		{name: "non canonical mode rejected", mode: `mode: "600"`, wantError: true},
+		{name: "non octal mode rejected", mode: `mode: "0680"`, wantError: true},
+		{name: "special bits rejected", mode: `mode: "1600"`, wantError: true},
+		{name: "group write rejected", mode: `mode: "0660"`, wantError: true},
+		{name: "other execute rejected", mode: `mode: "0601"`, wantError: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "compose.yaml"), []byte("services: {}\n"), 0o600); err != nil {
+				t.Fatalf("write compose file: %v", err)
+			}
+			manifest := `apiVersion: witness.dev/v1alpha1
+kind: Application
+metadata:
+  name: app
+spec:
+  provisioner: docker-compose
+  composeFiles:
+    - compose.yaml
+  secrets:
+    - source: secret.age
+      target: secret
+      decryptor: age
+`
+			if tc.mode != "" {
+				manifest += "      " + tc.mode + "\n"
+			}
+			manifestPath := filepath.Join(dir, ManifestFileName)
+			if err := os.WriteFile(manifestPath, []byte(manifest), 0o600); err != nil {
+				t.Fatalf("write manifest: %v", err)
+			}
+
+			app, err := ParseManifest(manifestPath)
+			if tc.wantError {
+				if err == nil {
+					t.Fatal("expected parse error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parse manifest: %v", err)
+			}
+			got, err := app.Spec.Secrets[0].ResolvedMode()
+			if err != nil {
+				t.Fatalf("resolve mode: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("expected resolved mode %04o, got %04o", tc.want, got)
+			}
+		})
+	}
+}

@@ -2,7 +2,9 @@ package application
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -97,7 +99,37 @@ func validateSecret(secret Secret) (string, string, error) {
 		return "", "", fmt.Errorf("decryptor must be %q", DecryptorAge)
 	}
 
+	if _, err := secret.ResolvedMode(); err != nil {
+		return "", "", err
+	}
+
 	return source, target, nil
+}
+
+func resolveSecretMode(value string) (os.FileMode, error) {
+	if value == "" {
+		return 0o600, nil
+	}
+
+	if len(value) != 4 || value[0] != '0' {
+		return 0, fmt.Errorf("mode must be a quoted canonical octal string matching 0[0-7]{3}")
+	}
+	for _, digit := range value[1:] {
+		if digit < '0' || digit > '7' {
+			return 0, fmt.Errorf("mode must be a quoted canonical octal string matching 0[0-7]{3}")
+		}
+	}
+
+	parsed, err := strconv.ParseUint(value, 8, 32)
+	if err != nil {
+		return 0, fmt.Errorf("parsing mode %q: %w", value, err)
+	}
+	mode := os.FileMode(parsed)
+	if mode&0o033 != 0 {
+		return 0, fmt.Errorf("mode %q must not grant group or other write or execute permissions", value)
+	}
+
+	return mode, nil
 }
 
 func normalizeRelativePath(pathValue string) (string, error) {

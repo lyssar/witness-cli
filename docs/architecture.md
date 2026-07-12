@@ -57,6 +57,7 @@ spec:
     - source: secret.env.age
       target: .env
       decryptor: age
+      mode: "0444"
 ```
 
 ### Reconciliation Cycle
@@ -84,6 +85,13 @@ The identity file is a standard age private key:
 # public key: age1…
 AGE-SECRET-KEY-1…
 ```
+
+Secret `mode` is optional and defaults to `"0600"`. When set, it must be a
+quoted canonical octal string matching `0[0-7]{3}`. Group and other may only
+have read permission (for example, `"0444"` for a container-readable secret);
+their write and execute permissions, and special bits, are rejected. Witness
+applies the resolved mode exactly to the staged and live secret target. This
+does not change Docker Compose secret semantics.
 
 ## Deletion & Cleanup
 

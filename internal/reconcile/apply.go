@@ -62,6 +62,9 @@ func promoteStagingToLive(destinationRoot string, app application.DiscoveredAppl
 		}
 		return "", fmt.Errorf("promoting staging dir %q to %q: %w", staging.Root, liveDir, err)
 	}
+	if err := os.Chmod(liveDir, 0o700); err != nil {
+		return "", fmt.Errorf("hardening live app root %q: %w", liveDir, err)
+	}
 
 	_ = os.RemoveAll(backupDir)
 	return liveDir, nil
@@ -307,6 +310,9 @@ func copyFile(src, dst string, mode os.FileMode) error {
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return fmt.Errorf("copy %q to %q: %w", src, dst, err)
+	}
+	if err := dstFile.Chmod(mode.Perm()); err != nil {
+		return fmt.Errorf("set mode on copied file %q: %w", dst, err)
 	}
 	return dstFile.Close()
 }

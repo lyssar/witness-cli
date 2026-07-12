@@ -1,5 +1,12 @@
 package application
 
+import (
+	"fmt"
+	"os"
+
+	"gopkg.in/yaml.v3"
+)
+
 // ManifestFileName is the exact supported application manifest filename.
 const ManifestFileName = "witness.yaml"
 
@@ -51,6 +58,39 @@ type Secret struct {
 	Source    string `yaml:"source"`
 	Target    string `yaml:"target"`
 	Decryptor string `yaml:"decryptor"`
+	Mode      SecretMode `yaml:"mode,omitempty"`
+}
+
+// SecretMode is the quoted manifest representation of secret target permissions.
+type SecretMode struct {
+	value   string
+	present bool
+}
+
+// NewSecretMode returns an explicitly supplied secret mode for programmatic manifests.
+func NewSecretMode(value string) SecretMode {
+	return SecretMode{value: value, present: true}
+}
+
+// UnmarshalYAML accepts only explicitly quoted YAML strings so permission modes
+// cannot be interpreted as YAML numbers.
+func (m *SecretMode) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.ScalarNode || value.Tag != "!!str" || (value.Style != yaml.DoubleQuotedStyle && value.Style != yaml.SingleQuotedStyle) {
+		return fmt.Errorf("mode must be a quoted string")
+	}
+	m.value = value.Value
+	m.present = true
+	return nil
+}
+
+// ResolvedMode returns the secret target permissions declared by the manifest.
+// An omitted mode defaults to 0600.
+func (s Secret) ResolvedMode() (os.FileMode, error) {
+	if !s.Mode.present {
+		return 0o600, nil
+	}
+
+	return resolveSecretMode(s.Mode.value)
 }
 
 // Identity captures deterministic operational identity and runtime slug.

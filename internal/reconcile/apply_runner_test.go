@@ -186,7 +186,7 @@ func (f fakeDecryptor) DecryptFile(_ context.Context, request decryptor.Request)
 	if err := os.MkdirAll(filepath.Dir(request.TargetPath), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(request.TargetPath, []byte(f.content), 0o600)
+	return os.WriteFile(request.TargetPath, []byte(f.content), request.Mode)
 }
 
 type fakeProvisioner struct {
