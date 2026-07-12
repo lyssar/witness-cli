@@ -43,6 +43,18 @@ func promoteRootedStagingToLive(destination *destinationFS, app application.Disc
 	if err := destination.copyExternalTree(staging.Root, stage); err != nil {
 		return "", fmt.Errorf("copying staging tree into destination: %w", err)
 	}
+
+	// On updates (live directory exists), preserve Docker bind-mount volume
+	// directories from the old live tree so persistent data survives the
+	// promotion rename cycle and retains correct process-user ownership.
+	if _, statErr := destination.root.Lstat(live); statErr == nil {
+		if err := preserveVolumeDirs(destination, live, stage, app.Application.Spec.ComposeFiles); err != nil {
+			return "", fmt.Errorf("preserving docker volume directories: %w", err)
+		}
+	} else if !os.IsNotExist(statErr) {
+		return "", fmt.Errorf("stat live app: %w", statErr)
+	}
+
 	backup := live + ".previous"
 	if err := destination.root.RemoveAll(backup); err != nil {
 		return "", fmt.Errorf("removing prior backup: %w", err)

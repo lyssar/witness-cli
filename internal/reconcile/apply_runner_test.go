@@ -97,6 +97,58 @@ func TestRunnerApplyUpdateAndDelete(t *testing.T) {
 	}
 }
 
+func TestRunnerApplyUpdatePreservesVolumeData(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary is required for reconcile runner tests")
+	}
+
+	fixture := newMutableGitFixture(t)
+
+	// Replace the default compose with one that has volume bind mounts.
+	fixture.updateCompose(t, "services:\n  hello:\n    image: hello:v1\n    volumes:\n      - ./data:/app/data\n      - ./config:/app/config\n")
+
+	configRoot := t.TempDir()
+	destinationRoot := filepath.Join(t.TempDir(), "dest")
+	writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "apps", destinationRoot))
+	writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
+
+	provisioner := &fakeProvisioner{}
+	runner := NewRunner(configRoot, WithDecryptor(fakeDecryptor{content: "TOKEN=initial\n"}), WithProvisioner(provisioner))
+
+	// Initial reconcile — creates the live directory.
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("initial reconcile: %v", err)
+	}
+	liveDir := filepath.Join(destinationRoot, "hello")
+
+	// Simulate Docker creating volume directories with data.
+	dataDir := filepath.Join(liveDir, "data")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("mkdir data: %v", err)
+	}
+	writeFile(t, filepath.Join(dataDir, "persistent.db"), "important-data")
+
+	configDir := filepath.Join(liveDir, "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	writeFile(t, filepath.Join(configDir, "app.conf"), "debug=true")
+
+	// Update the compose file to trigger drift.
+	fixture.updateCompose(t, "services:\n  hello:\n    image: hello:v2\n    volumes:\n      - ./data:/app/data\n      - ./config:/app/config\n")
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("update reconcile: %v", err)
+	}
+
+	// Volume directories and their data must survive the update.
+	assertFileContent(t, filepath.Join(liveDir, "compose.yaml"), "services:\n  hello:\n    image: hello:v2\n    volumes:\n      - ./data:/app/data\n      - ./config:/app/config\n")
+	assertFileContent(t, filepath.Join(liveDir, "data", "persistent.db"), "important-data")
+	assertFileContent(t, filepath.Join(liveDir, "config", "app.conf"), "debug=true")
+	if provisioner.applyCalls != 2 {
+		t.Fatalf("expected two apply calls, got %d", provisioner.applyCalls)
+	}
+}
+
 func TestRunnerSuccessfulApplyRemovesPlaintextStagingRoot(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git binary is required for reconcile runner tests")
