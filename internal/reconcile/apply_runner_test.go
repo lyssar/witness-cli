@@ -149,6 +149,39 @@ func TestRunnerApplyUpdatePreservesVolumeData(t *testing.T) {
 	}
 }
 
+func TestRunnerFirstDeployCreatesVolumeDirectories(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary is required for reconcile runner tests")
+	}
+
+	fixture := newMutableGitFixture(t)
+
+	// Compose file with bind-mount volumes — first deploy must pre-create them.
+	fixture.updateCompose(t, "services:\n  hello:\n    image: hello:v1\n    volumes:\n      - ./data:/app/data\n      - ./config:/app/config\n")
+
+	configRoot := t.TempDir()
+	destinationRoot := filepath.Join(t.TempDir(), "dest")
+	writeFile(t, filepath.Join(configRoot, "manifest.yaml"), minimalManifest(fixture.remotePath, "main", "apps", destinationRoot))
+	writeValidAgeKey(t, filepath.Join(configRoot, "age.key"))
+
+	runner := NewRunner(configRoot, WithDecryptor(fakeDecryptor{content: "TOKEN=initial\n"}), WithProvisioner(&fakeProvisioner{}))
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("first deploy reconcile: %v", err)
+	}
+
+	liveDir := filepath.Join(destinationRoot, "hello")
+	for _, dir := range []string{"data", "config"} {
+		info, err := os.Stat(filepath.Join(liveDir, dir))
+		if err != nil {
+			t.Fatalf("volume directory %q not created: %v", dir, err)
+		}
+		if !info.IsDir() {
+			t.Fatalf("volume path %q is not a directory", dir)
+		}
+	}
+}
+
 func TestRunnerSuccessfulApplyRemovesPlaintextStagingRoot(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git binary is required for reconcile runner tests")

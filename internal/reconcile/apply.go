@@ -47,11 +47,17 @@ func promoteRootedStagingToLive(destination *destinationFS, app application.Disc
 	// On updates (live directory exists), preserve Docker bind-mount volume
 	// directories from the old live tree so persistent data survives the
 	// promotion rename cycle and retains correct process-user ownership.
+	// On first deploy, pre-create empty volume directories so they are
+	// owned by the process user rather than root:root (Docker default).
 	if _, statErr := destination.root.Lstat(live); statErr == nil {
 		if err := preserveVolumeDirs(destination, live, stage, app.Application.Spec.ComposeFiles); err != nil {
 			return "", fmt.Errorf("preserving docker volume directories: %w", err)
 		}
-	} else if !os.IsNotExist(statErr) {
+	} else if os.IsNotExist(statErr) {
+		if err := ensureVolumeDirs(destination, stage, app.Application.Spec.ComposeFiles); err != nil {
+			return "", fmt.Errorf("creating docker volume directories: %w", err)
+		}
+	} else {
 		return "", fmt.Errorf("stat live app: %w", statErr)
 	}
 

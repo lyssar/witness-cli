@@ -134,6 +134,31 @@ func preserveVolumeDirs(d *destinationFS, oldLive, stage string, composeFiles []
 	return nil
 }
 
+// ensureVolumeDirs pre-creates Docker bind-mount directories found in compose
+// files so they receive process-user ownership instead of root:root. Use on
+// first deploy when no old live tree exists to preserve data from.
+func ensureVolumeDirs(d *destinationFS, stage string, composeFiles []string) error {
+	for _, composeFile := range composeFiles {
+		composeRef := filepath.Join(stage, filepath.FromSlash(composeFile))
+		sources, err := composeVolumeSources(d, composeRef)
+		if err != nil {
+			return err
+		}
+		composeDir := filepath.Dir(filepath.FromSlash(composeFile))
+		for _, src := range sources {
+			relDir := src
+			if composeDir != "." {
+				relDir = filepath.Join(composeDir, src)
+			}
+			dir := filepath.Join(stage, relDir)
+			if err := d.root.MkdirAll(dir, 0o755); err != nil {
+				return fmt.Errorf("creating volume directory %q: %w", src, err)
+			}
+		}
+	}
+	return nil
+}
+
 // copyDirRooted copies the contents of oldDir to newDir using rooted
 // destination operations. Symlinks are rejected.
 func copyDirRooted(d *destinationFS, oldDir, newDir string) error {
