@@ -55,9 +55,9 @@ type RegistryCredentials struct {
 
 // Secret defines one encrypted file input and decrypted runtime output.
 type Secret struct {
-	Source    string `yaml:"source"`
-	Target    string `yaml:"target"`
-	Decryptor string `yaml:"decryptor"`
+	Source    string     `yaml:"source"`
+	Target    string     `yaml:"target"`
+	Decryptor string     `yaml:"decryptor"`
 	Mode      SecretMode `yaml:"mode,omitempty"`
 }
 
