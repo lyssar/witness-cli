@@ -222,12 +222,19 @@ func volumeClaimDirsNeedFix(d *destinationFS, app application.DiscoveredApplicat
 				continue
 			}
 			absDir := filepath.Join(live, relDir)
-			info, err := os.Stat(d.absolute(absDir))
+			if err := d.ensureNoSymlinkAncestry(absDir); err != nil {
+				return false, err
+			}
+			hostPath := d.absolute(absDir)
+			info, err := os.Lstat(hostPath)
 			if os.IsNotExist(err) {
 				return true, nil
 			}
 			if err != nil {
 				return false, err
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				return false, fmt.Errorf("volume claim path %q is a symlink", claim.Dir)
 			}
 			if !info.IsDir() {
 				return false, fmt.Errorf("volume claim path %q is not a directory", claim.Dir)

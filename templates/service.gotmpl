@@ -23,6 +23,7 @@ ReadWritePaths={{ .Observer.Spec.Destination }} {{ .ObserverConfigPath }}
 PrivateTmp=yes
 AmbientCapabilities=CAP_CHOWN
 CapabilityBoundingSet=~CAP_SYS_ADMIN CAP_NET_ADMIN CAP_SYS_PTRACE
+RestrictSUIDSGID=yes
 PrivateDevices=yes
 ProtectHostname=yes
 ProtectClock=yes

@@ -51,9 +51,12 @@ type Spec struct {
 // directory so the Docker container can read and write regardless of the
 // image's hardcoded UID/GID.
 type VolumeClaim struct {
+	// Dir is the bind-mount directory path relative to the compose file directory.
 	Dir string `yaml:"dir"`
-	UID int    `yaml:"uid"`
-	GID int    `yaml:"gid"`
+	// UID is the numeric container user ID that should own the directory.
+	UID int `yaml:"uid"`
+	// GID is the numeric container group ID that should own the directory.
+	GID int `yaml:"gid"`
 }
 
 // RegistryCredentials stores encrypted docker registry authentication.

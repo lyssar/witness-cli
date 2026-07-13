@@ -102,11 +102,11 @@ func ValidateVolumeClaim(claim VolumeClaim) error {
 	if normalized == "." || normalized == ".." {
 		return fmt.Errorf("dir %q is not allowed", claim.Dir)
 	}
-	if claim.UID < 0 {
-		return fmt.Errorf("uid must not be negative")
+	if claim.UID < 0 || claim.UID > 65535 {
+		return fmt.Errorf("uid must be in range 0–65535")
 	}
-	if claim.GID < 0 {
-		return fmt.Errorf("gid must not be negative")
+	if claim.GID < 0 || claim.GID > 65535 {
+		return fmt.Errorf("gid must be in range 0–65535")
 	}
 	return nil
 }
