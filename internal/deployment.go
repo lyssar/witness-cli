@@ -219,7 +219,8 @@ func (dh *DeployHandler) Validate() error {
 
 	// Check setcap is available for volume claim ownership support.
 	// Non-fatal — volume claims degrade gracefully without libcap2-bin.
-	stdOut, _ = dh.runSudo(remoteClient, "command -v setcap", nil)
+	// setcap lives in /sbin which is often not in non-interactive PATH.
+	stdOut, _ = dh.runSudo(remoteClient, "test -x /sbin/setcap && echo /sbin/setcap || command -v setcap || true", nil)
 	if strings.TrimSpace(string(stdOut)) == "" {
 		utils.LogInfo("setcap not found on target — install libcap2-bin for volume claim ownership support")
 	}
@@ -399,7 +400,7 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 	// The witness daemon runs unprivileged but needs to chown bind-mount directories
 	// to container UIDs declared in volumeClaims. setcap may fail on systems without
 	// libcap2-bin; this is non-fatal — volume claims degrade to a no-op without it.
-	if out, err := dh.runSudo(client, "setcap cap_chown+ep /usr/local/bin/witness", nil); err != nil {
+	if out, err := dh.runSudo(client, "/sbin/setcap cap_chown+ep /usr/local/bin/witness", nil); err != nil {
 		utils.LogInfo("Failed to set CAP_CHOWN on witness binary — volume claims will not apply ownership (non-fatal)", "error", err, "output", string(out))
 	}
 
