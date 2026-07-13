@@ -57,12 +57,10 @@ func (p *DockerCompose) Apply(ctx context.Context, runtime RuntimeContext, app a
 	}
 
 	// Apply is only called when drift was detected, so we always issue
-	// docker compose up. Secret-only changes add --force-recreate because
-	// Docker cannot detect secret file content changes and would otherwise
-	// skip the service. Compose-file and manifest-only changes (including
-	// volume claims) rely on Docker's own change detection.
+	// docker compose up. Secret-only and volume-claim changes add
+	// --force-recreate because Docker cannot detect those changes.
 	args := []string{"up", "--detach", "--remove-orphans"}
-	if runtime.SecretsChanged {
+	if runtime.SecretsChanged || runtime.VolumeClaimsChanged {
 		args = append(args, "--force-recreate")
 	}
 	return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, args...)...)

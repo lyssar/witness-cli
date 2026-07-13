@@ -94,11 +94,12 @@ func WithLogger(logger *slog.Logger) RunnerOption {
 type discoveredAppSet map[string]application.DiscoveredApplication
 
 type appRuntime struct {
-	app         application.DiscoveredApplication
-	fileset     application.FileSet
-	staging     AppStaging
-	stagingDone func() error
-	drift       DriftResult
+	app                    application.DiscoveredApplication
+	fileset                application.FileSet
+	staging                AppStaging
+	stagingDone            func() error
+	drift                  DriftResult
+	volumeClaimsForcedDrift bool
 }
 
 // Run executes a reconcile pass for the configured root.
@@ -249,6 +250,7 @@ func (r *Runner) Run(ctx context.Context) error {
 				r.logger.Warn("Checking volume claim directories failed", "operationalID", app.OperationalID, "error", err)
 			} else if missing {
 				appEntry.drift.HasDrift = true
+				appEntry.volumeClaimsForcedDrift = true
 				r.logger.Info("Volume claim directory missing or wrong ownership — forcing apply", "operationalID", app.OperationalID)
 			}
 		}
@@ -418,13 +420,14 @@ func (r *Runner) applyApp(ctx context.Context, destination *destinationFS, runti
 	secretsChanged := len(runtime.drift.SecretChanged) > 0
 
 	runtimeRuntime := provisioner.RuntimeContext{
-		OperationalID:        runtime.app.OperationalID,
-		RuntimeSlug:          runtime.app.RuntimeSlug,
-		LiveDir:              liveDir,
-		SourceDir:            runtime.app.SourceDir,
-		RegistryPasswordPath: registryPasswordPath,
-		ComposeFilesChanged:  composeFilesChanged,
-		SecretsChanged:       secretsChanged,
+		OperationalID:         runtime.app.OperationalID,
+		RuntimeSlug:           runtime.app.RuntimeSlug,
+		LiveDir:               liveDir,
+		SourceDir:             runtime.app.SourceDir,
+		RegistryPasswordPath:  registryPasswordPath,
+		ComposeFilesChanged:   composeFilesChanged,
+		SecretsChanged:        secretsChanged,
+		VolumeClaimsChanged:   runtime.volumeClaimsForcedDrift,
 	}
 	if err := p.Apply(ctx, runtimeRuntime, runtime.app.Application); err != nil {
 		return fmt.Errorf("applying provisioner %q: %w", p.Name(), err)
