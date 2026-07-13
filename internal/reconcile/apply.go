@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -51,13 +52,22 @@ func promoteRootedStagingToLive(destination *destinationFS, app application.Disc
 	// owned by the process user rather than root:root (Docker default).
 	if _, statErr := destination.root.Lstat(live); statErr == nil {
 		if err := preserveVolumeDirs(destination, live, stage, app.Application.Spec.ComposeFiles, app.Application.Spec.VolumeClaims); err != nil {
-			return "", fmt.Errorf("preserving docker volume directories: %w", err)
+			if errors.Is(err, errVolumeClaim) {
+				slog.Warn("Volume claim ownership not applied during preserve", "operationalID", app.OperationalID, "error", err)
+			} else {
+				return "", fmt.Errorf("preserving docker volume directories: %w", err)
+			}
 		}
 	}
 	// Always ensure claimed directories exist — covers first deploy and
 	// recovery after manual deletion of volume directories on updates.
 	if err := ensureVolumeDirs(destination, stage, app.Application.Spec.ComposeFiles, app.Application.Spec.VolumeClaims); err != nil {
-		return "", fmt.Errorf("creating docker volume directories: %w", err)
+		if errors.Is(err, errVolumeClaim) {
+			// Volume claim chown failed — log and continue, don't abort.
+			slog.Warn("Volume claim ownership not applied", "operationalID", app.OperationalID, "error", err)
+		} else {
+			return "", fmt.Errorf("creating docker volume directories: %w", err)
+		}
 	}
 	if _, statErr := destination.root.Lstat(live); os.IsNotExist(statErr) {
 		// First deploy — fall through to promotion below

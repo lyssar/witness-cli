@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -109,6 +110,7 @@ func preserveVolumeDirs(d *destinationFS, oldLive, stage string, composeFiles []
 	}
 	// Build claim lookup: relative dir → (uid, gid)
 	claimMap := volumeClaimMap(volumeClaims)
+	var claimErrs []error
 	for _, composeFile := range composeFiles {
 		composeRef := filepath.Join(stage, filepath.FromSlash(composeFile))
 		sources, err := composeVolumeSources(d, composeRef)
@@ -131,7 +133,7 @@ func preserveVolumeDirs(d *destinationFS, oldLive, stage string, composeFiles []
 			if info, err := d.root.Lstat(newDir); err == nil && info.IsDir() {
 				// Already present in stage; apply claim ownership if configured.
 				if err := applyVolumeClaim(d, claimMap, relDir, newDir, src); err != nil {
-					return err
+					claimErrs = append(claimErrs, err)
 				}
 				continue
 			}
@@ -139,11 +141,11 @@ func preserveVolumeDirs(d *destinationFS, oldLive, stage string, composeFiles []
 				return fmt.Errorf("preserving volume directory %q from old live: %w", src, err)
 			}
 			if err := applyVolumeClaim(d, claimMap, relDir, newDir, src); err != nil {
-				return err
+				claimErrs = append(claimErrs, err)
 			}
 		}
 	}
-	return nil
+	return errorsJoin(claimErrs)
 }
 
 // ensureVolumeDirs pre-creates Docker bind-mount directories found in compose
@@ -152,6 +154,7 @@ func preserveVolumeDirs(d *destinationFS, oldLive, stage string, composeFiles []
 // Volume claim ownership is applied after creation.
 func ensureVolumeDirs(d *destinationFS, stage string, composeFiles []string, volumeClaims []application.VolumeClaim) error {
 	claimMap := volumeClaimMap(volumeClaims)
+	var claimErrs []error
 	for _, composeFile := range composeFiles {
 		composeRef := filepath.Join(stage, filepath.FromSlash(composeFile))
 		sources, err := composeVolumeSources(d, composeRef)
@@ -169,30 +172,22 @@ func ensureVolumeDirs(d *destinationFS, stage string, composeFiles []string, vol
 				return fmt.Errorf("creating volume directory %q: %w", src, err)
 			}
 			if err := applyVolumeClaim(d, claimMap, relDir, dir, src); err != nil {
-				return err
+				claimErrs = append(claimErrs, err)
 			}
 		}
 	}
-	return nil
+	return errorsJoin(claimErrs)
 }
 
 // applyVolumeClaim sets ownership on a volume directory if a matching claim
-// exists. Permission errors (EPERM) are silently skipped because an
-// unprivileged process may lack CAP_CHOWN; the operator is expected to grant
-// the capability to the witness daemon or pre-create directories with correct
-// ownership.
+// exists. Errors are returned to the caller; the reconcile runner decides
+// whether to treat them as fatal.
 func applyVolumeClaim(d *destinationFS, claimMap map[string]application.VolumeClaim, relDir, absDir, src string) error {
 	claim, ok := claimMap[filepath.ToSlash(relDir)]
 	if !ok {
 		return nil
 	}
-	if err := d.root.Chown(absDir, claim.UID, claim.GID); err != nil {
-		if os.IsPermission(err) {
-			return nil // unprivileged process, operator handles ownership externally
-		}
-		return fmt.Errorf("applying volume claim ownership to %q: %w", src, err)
-	}
-	return nil
+	return d.root.Chown(absDir, claim.UID, claim.GID)
 }
 
 // volumeClaimDirsNeedFix checks whether any volume claim directory is absent
@@ -317,4 +312,23 @@ func deduplicateStrings(slice []string) []string {
 		result = append(result, s)
 	}
 	return result
+}
+
+// volumeClaimError signals that a volume claim ownership operation failed.
+// The caller may treat this as a warning rather than aborting the reconcile.
+var errVolumeClaim = errors.New("volume claim")
+
+func volumeClaimError(err error) error {
+	return fmt.Errorf("%w: %w", errVolumeClaim, err)
+}
+
+func errorsJoin(errs []error) error {
+	if len(errs) == 0 {
+		return nil
+	}
+	wrapped := make([]error, len(errs))
+	for i, e := range errs {
+		wrapped[i] = volumeClaimError(e)
+	}
+	return errors.Join(wrapped...)
 }
