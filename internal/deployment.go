@@ -398,10 +398,12 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 
 	// Grant CAP_CHOWN so witness can apply volume claim ownership during reconcile.
 	// The witness daemon runs unprivileged but needs to chown bind-mount directories
-	// to container UIDs declared in volumeClaims. setcap may fail on systems without
-	// libcap2-bin; this is non-fatal — volume claims degrade to a no-op without it.
-	if out, err := dh.runSudo(client, "/sbin/setcap cap_chown+ep /usr/local/bin/witness", nil); err != nil {
-		utils.LogInfo("Failed to set CAP_CHOWN on witness binary — volume claims will not apply ownership (non-fatal)", "error", err, "output", string(out))
+	// to container UIDs declared in volumeClaims. SSH sessions may return EOF even
+	// when setcap succeeded, so we verify the result with getcap.
+	_, _ = dh.runSudo(client, "/sbin/setcap cap_chown+ep /usr/local/bin/witness", nil)
+	getcapOut, _ := dh.runSudo(client, "/sbin/getcap /usr/local/bin/witness", nil)
+	if !strings.Contains(string(getcapOut), "cap_chown") {
+		utils.LogInfo("CAP_CHOWN not applied to witness binary — volume claims will not apply ownership (non-fatal)", "getcap_output", string(getcapOut))
 	}
 
 	// Verify binary was installed
