@@ -217,6 +217,13 @@ func (dh *DeployHandler) Validate() error {
 	}
 	slog.Debug("age found on target", "path", agePath)
 
+	// Check setcap is available for volume claim ownership support.
+	// Non-fatal — volume claims degrade gracefully without libcap2-bin.
+	stdOut, _ = dh.runSudo(remoteClient, "command -v setcap", nil)
+	if strings.TrimSpace(string(stdOut)) == "" {
+		utils.LogInfo("setcap not found on target — install libcap2-bin for volume claim ownership support")
+	}
+
 	utils.LogInfo("Validating deployment")
 
 	return nil

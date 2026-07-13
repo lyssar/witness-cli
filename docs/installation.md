@@ -7,11 +7,29 @@ title: Installation
 
 ## Prerequisites
 
-Before you join the Brotherhood, ensure your system has the necessary tools:
+### Local Machine (where you run `witness`)
 
-- **Git** — repository sync
+- **Git** — repository operations
 - **age** — secret encryption/decryption ([install age](https://github.com/FiloSottile/age#installation))
-- **Docker Compose** — for application deployment (required by the `docker-compose` provisioner)
+- **SSH** — deployment transport
+- **Go 1.25+** — only if building from source
+
+### Target Server (where apps run)
+
+Install before the first `witness deploy`:
+
+```bash
+sudo apt install git age docker.io docker-compose-v2 libcap2-bin
+```
+
+| Package | Purpose |
+|---|---|
+| `git` | Repository sync |
+| `age` | Secret decryption |
+| `docker` + `docker compose` | Container runtime |
+| `libcap2-bin` | Volume claim ownership (recommended; degrades gracefully without it) |
+
+See the [Quickstart → Step 4](quickstart) for details on target server setup.
 
 ## Option 1: Install Script (recommended)
 

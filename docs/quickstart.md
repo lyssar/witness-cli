@@ -71,6 +71,29 @@ Push the app manifest to your Git repository.
 
 ## Step 4: Deploy to the Server
 
+### Target Server Requirements
+
+Before deploying, ensure the target server has:
+
+| Package | Purpose | Required |
+|---|---|---|
+| `git` | Repository sync | ✅ mandatory |
+| `age` | Secret decryption | ✅ mandatory |
+| `docker` + `docker compose` | Container runtime | ✅ mandatory |
+| `libcap2-bin` | Volume claim ownership via `setcap` | ⚠️ recommended |
+
+Install on Debian/Ubuntu:
+
+```bash
+sudo apt install git age docker.io docker-compose-v2 libcap2-bin
+```
+
+<div class="highlight-box">
+<strong>Why libcap2-bin?</strong> Witness grants <code>CAP_CHOWN</code> to its binary during deploy so the unprivileged daemon can set bind-mount directory ownership to container UIDs. Without it, volume claims <a href="commands#volume-claims">degrade to a no-op</a> and you must chown data directories manually.
+</div>
+
+### Run Deploy
+
 Deploy the Observer to your remote server via SSH:
 
 ```bash
