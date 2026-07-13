@@ -21,7 +21,7 @@ ReadWritePaths={{ .Observer.Spec.Destination }} {{ .ObserverConfigPath }}
 
 # Security hardening
 PrivateTmp=yes
-NoNewPrivileges=yes
+AmbientCapabilities=CAP_CHOWN
 CapabilityBoundingSet=~CAP_SYS_ADMIN CAP_NET_ADMIN CAP_SYS_PTRACE
 PrivateDevices=yes
 ProtectHostname=yes
