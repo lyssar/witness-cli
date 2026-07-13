@@ -180,14 +180,21 @@ func ensureVolumeDirs(d *destinationFS, stage string, composeFiles []string, vol
 }
 
 // applyVolumeClaim sets ownership on a volume directory if a matching claim
-// exists. Errors are returned to the caller; the reconcile runner decides
-// whether to treat them as fatal.
+// exists. Uses os.Lchown directly because os.Root.Chown can lose file
+// capabilities (CAP_CHOWN) on Linux — see https://github.com/golang/go/issues/67002.
 func applyVolumeClaim(d *destinationFS, claimMap map[string]application.VolumeClaim, relDir, absDir, src string) error {
 	claim, ok := claimMap[filepath.ToSlash(relDir)]
 	if !ok {
 		return nil
 	}
-	return d.root.Chown(absDir, claim.UID, claim.GID)
+	if err := d.ensureNoSymlinkAncestry(absDir); err != nil {
+		return err
+	}
+	hostPath := d.absolute(absDir)
+	if _, err := os.Lstat(hostPath); err != nil {
+		return err
+	}
+	return os.Lchown(hostPath, claim.UID, claim.GID)
 }
 
 // volumeClaimDirsNeedFix checks whether any volume claim directory is absent
