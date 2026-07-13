@@ -98,6 +98,7 @@ func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 		"name", app.Metadata.Name,
 		"provisioner", app.Spec.Provisioner,
 		"composeFiles", len(app.Spec.ComposeFiles),
+		"volumeClaims", len(app.Spec.VolumeClaims),
 		"secrets", len(app.Spec.Secrets),
 		"registry", app.Spec.RegistryCredentials != nil,
 	)
@@ -110,6 +111,7 @@ func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 			Options(
 				huh.NewOption("Update registry credentials", "registry"),
 				huh.NewOption("Add secret", "secret"),
+				huh.NewOption("Add volume claim", "volume-claim"),
 				huh.NewOption("Add compose file", "compose"),
 				huh.NewOption("No, done", "done"),
 			).
@@ -126,6 +128,8 @@ func UpdateAppCmd(cmd *cobra.Command, args []string) error {
 			utils.CheckErr(updateRegistryCredentials(&app, ageKey))
 		case "secret":
 			utils.CheckErr(addSecret(&app))
+		case "volume-claim":
+			utils.CheckErr(addVolumeClaim(&app))
 		case "compose":
 			utils.CheckErr(addComposeFile(&app))
 		}
@@ -192,6 +196,11 @@ func validateAppManifest(app *App) error {
 		}
 		if secret.Decryptor == "" {
 			return fmt.Errorf("secrets[%d].decryptor is required", i)
+		}
+	}
+	for i, claim := range app.Spec.VolumeClaims {
+		if err := application.ValidateVolumeClaim(claim); err != nil {
+			return fmt.Errorf("volumeClaims[%d]: %w", i, err)
 		}
 	}
 	return nil
@@ -272,5 +281,56 @@ func addComposeFile(app *App) error {
 	utils.CheckErr(err)
 
 	app.Spec.ComposeFiles = append(app.Spec.ComposeFiles, composeFile)
+	return nil
+}
+
+func addVolumeClaim(app *App) error {
+	var claim application.VolumeClaim
+
+	err := huh.NewInput().
+		Title("Volume directory").
+		Description("Bind-mount directory name relative to the compose file (e.g., 'data')").
+		Validate(huh.ValidateNotEmpty()).
+		Value(&claim.Dir).
+		Run()
+	utils.CheckErr(err)
+
+	var uidStr, gidStr string
+
+	err = huh.NewInput().
+		Title("Container UID").
+		Description("Numeric UID the container process runs as").
+		Validate(func(s string) error {
+			if s == "" {
+				return fmt.Errorf("uid is required")
+			}
+			return nil
+		}).
+		Value(&uidStr).
+		Run()
+	utils.CheckErr(err)
+
+	err = huh.NewInput().
+		Title("Container GID").
+		Description("Numeric GID the container process runs as").
+		Validate(func(s string) error {
+			if s == "" {
+				return fmt.Errorf("gid is required")
+			}
+			return nil
+		}).
+		Value(&gidStr).
+		Run()
+	utils.CheckErr(err)
+
+	uid, err := parseUint(uidStr)
+	utils.CheckErr(err)
+	gid, err := parseUint(gidStr)
+	utils.CheckErr(err)
+
+	claim.UID = uid
+	claim.GID = gid
+
+	app.Spec.VolumeClaims = append(app.Spec.VolumeClaims, claim)
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/lyssar/witness-cli/internal/application"
 	"gopkg.in/yaml.v3"
 )
 
@@ -99,11 +100,14 @@ func normalizeRelativeBindMount(source string) (string, error) {
 // live into the stage tree so Docker bind-mount data survives a promotion
 // rename cycle. Volume source paths are resolved relative to each compose
 // file's directory, matching Docker Compose semantics. Existing directories
-// in the stage tree are not overwritten.
-func preserveVolumeDirs(d *destinationFS, oldLive, stage string, composeFiles []string) error {
+// in the stage tree are not overwritten. Volume claim ownership is applied
+// after copying.
+func preserveVolumeDirs(d *destinationFS, oldLive, stage string, composeFiles []string, volumeClaims []application.VolumeClaim) error {
 	if oldLive == "" || stage == "" {
 		return nil
 	}
+	// Build claim lookup: relative dir → (uid, gid)
+	claimMap := volumeClaimMap(volumeClaims)
 	for _, composeFile := range composeFiles {
 		composeRef := filepath.Join(stage, filepath.FromSlash(composeFile))
 		sources, err := composeVolumeSources(d, composeRef)
@@ -124,10 +128,21 @@ func preserveVolumeDirs(d *destinationFS, oldLive, stage string, composeFiles []
 			}
 			newDir := filepath.Join(stage, relDir)
 			if info, err := d.root.Lstat(newDir); err == nil && info.IsDir() {
-				continue // already present in stage
+				// Already present in stage; apply claim ownership if configured.
+				if claim, ok := claimMap[filepath.ToSlash(relDir)]; ok {
+					if err := d.root.Chown(newDir, claim.UID, claim.GID); err != nil {
+						return fmt.Errorf("applying volume claim ownership to %q: %w", src, err)
+					}
+				}
+				continue
 			}
 			if err := copyDirRooted(d, oldDir, newDir); err != nil {
 				return fmt.Errorf("preserving volume directory %q from old live: %w", src, err)
+			}
+			if claim, ok := claimMap[filepath.ToSlash(relDir)]; ok {
+				if err := d.root.Chown(newDir, claim.UID, claim.GID); err != nil {
+					return fmt.Errorf("applying volume claim ownership to %q: %w", src, err)
+				}
 			}
 		}
 	}
@@ -137,7 +152,9 @@ func preserveVolumeDirs(d *destinationFS, oldLive, stage string, composeFiles []
 // ensureVolumeDirs pre-creates Docker bind-mount directories found in compose
 // files so they receive process-user ownership instead of root:root. Use on
 // first deploy when no old live tree exists to preserve data from.
-func ensureVolumeDirs(d *destinationFS, stage string, composeFiles []string) error {
+// Volume claim ownership is applied after creation.
+func ensureVolumeDirs(d *destinationFS, stage string, composeFiles []string, volumeClaims []application.VolumeClaim) error {
+	claimMap := volumeClaimMap(volumeClaims)
 	for _, composeFile := range composeFiles {
 		composeRef := filepath.Join(stage, filepath.FromSlash(composeFile))
 		sources, err := composeVolumeSources(d, composeRef)
@@ -154,9 +171,23 @@ func ensureVolumeDirs(d *destinationFS, stage string, composeFiles []string) err
 			if err := d.root.MkdirAll(dir, 0o755); err != nil {
 				return fmt.Errorf("creating volume directory %q: %w", src, err)
 			}
+			if claim, ok := claimMap[filepath.ToSlash(relDir)]; ok {
+				if err := d.root.Chown(dir, claim.UID, claim.GID); err != nil {
+					return fmt.Errorf("applying volume claim ownership to %q: %w", src, err)
+				}
+			}
 		}
 	}
 	return nil
+}
+
+// volumeClaimMap builds a lookup from normalized dir path to (uid, gid).
+func volumeClaimMap(claims []application.VolumeClaim) map[string]application.VolumeClaim {
+	m := make(map[string]application.VolumeClaim, len(claims))
+	for _, c := range claims {
+		m[filepath.ToSlash(filepath.Clean(c.Dir))] = c
+	}
+	return m
 }
 
 // copyDirRooted copies the contents of oldDir to newDir using rooted

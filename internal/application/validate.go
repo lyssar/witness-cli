@@ -77,6 +77,37 @@ func ValidateManifest(app Application) error {
 
 	}
 
+	claimDirs := make(map[string]struct{}, len(app.Spec.VolumeClaims))
+	for i, claim := range app.Spec.VolumeClaims {
+		if err := ValidateVolumeClaim(claim); err != nil {
+			return fmt.Errorf("spec.volumeClaims[%d]: %w", i, err)
+		}
+		if _, ok := claimDirs[claim.Dir]; ok {
+			return fmt.Errorf("spec.volumeClaims[%d]: duplicate dir %q", i, claim.Dir)
+		}
+		claimDirs[claim.Dir] = struct{}{}
+	}
+
+	return nil
+}
+
+// ValidateVolumeClaim checks a single volume claim for path safety and valid UID/GID range.
+func ValidateVolumeClaim(claim VolumeClaim) error {
+	normalized, err := normalizeRelativePath(claim.Dir)
+	if err != nil {
+		return fmt.Errorf("dir: %w", err)
+	}
+	// Reject "." and ".." that normalizeRelativePath may pass through as the
+	// compose volume source resolution requires a concrete directory name.
+	if normalized == "." || normalized == ".." {
+		return fmt.Errorf("dir %q is not allowed", claim.Dir)
+	}
+	if claim.UID < 0 {
+		return fmt.Errorf("uid must not be negative")
+	}
+	if claim.GID < 0 {
+		return fmt.Errorf("gid must not be negative")
+	}
 	return nil
 }
 

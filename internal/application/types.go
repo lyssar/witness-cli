@@ -42,8 +42,18 @@ type Metadata struct {
 type Spec struct {
 	Provisioner         string               `yaml:"provisioner"`
 	ComposeFiles        []string             `yaml:"composeFiles"`
+	VolumeClaims        []VolumeClaim        `yaml:"volumeClaims,omitempty"`
 	Secrets             []Secret             `yaml:"secrets,omitempty"`
 	RegistryCredentials *RegistryCredentials `yaml:"registryCredentials,omitempty"`
+}
+
+// VolumeClaim instructs the reconciler to set ownership on a bind-mount
+// directory so the Docker container can read and write regardless of the
+// image's hardcoded UID/GID.
+type VolumeClaim struct {
+	Dir string `yaml:"dir"`
+	UID int    `yaml:"uid"`
+	GID int    `yaml:"gid"`
 }
 
 // RegistryCredentials stores encrypted docker registry authentication.

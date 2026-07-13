@@ -24,6 +24,14 @@ spec:
 {{- range .Spec.ComposeFiles }}
     - {{ . }}
 {{- end }}
+{{- if .Spec.VolumeClaims }}
+  volumeClaims:
+{{- range .Spec.VolumeClaims }}
+    - dir: {{ .Dir }}
+      uid: {{ .UID }}
+      gid: {{ .GID }}
+{{- end }}
+{{- end }}
 {{- if .Spec.Secrets }}
   secrets:
 {{- range .Spec.Secrets }}

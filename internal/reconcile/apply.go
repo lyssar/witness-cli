@@ -50,11 +50,11 @@ func promoteRootedStagingToLive(destination *destinationFS, app application.Disc
 	// On first deploy, pre-create empty volume directories so they are
 	// owned by the process user rather than root:root (Docker default).
 	if _, statErr := destination.root.Lstat(live); statErr == nil {
-		if err := preserveVolumeDirs(destination, live, stage, app.Application.Spec.ComposeFiles); err != nil {
+		if err := preserveVolumeDirs(destination, live, stage, app.Application.Spec.ComposeFiles, app.Application.Spec.VolumeClaims); err != nil {
 			return "", fmt.Errorf("preserving docker volume directories: %w", err)
 		}
 	} else if os.IsNotExist(statErr) {
-		if err := ensureVolumeDirs(destination, stage, app.Application.Spec.ComposeFiles); err != nil {
+		if err := ensureVolumeDirs(destination, stage, app.Application.Spec.ComposeFiles, app.Application.Spec.VolumeClaims); err != nil {
 			return "", fmt.Errorf("creating docker volume directories: %w", err)
 		}
 	} else {

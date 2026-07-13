@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/charmbracelet/huh"
 	"github.com/creasty/defaults"
@@ -177,6 +178,76 @@ func (app *App) Configure() {
 		}
 	}
 
+	var addVolumeClaims bool
+	err = huh.NewConfirm().
+		Title("Add volume claims?").
+		Description("Volume claims set ownership on bind-mount directories for containers with hardcoded UIDs. Required when the container cannot write to its data directory.").
+		Value(&addVolumeClaims).
+		Run()
+	utils.CheckErr(err)
+
+	if addVolumeClaims {
+		for {
+			var claim application.VolumeClaim
+
+			err = huh.NewInput().
+				Title("Volume directory").
+				Description("Bind-mount directory name relative to the compose file (e.g., 'data')").
+				Validate(huh.ValidateNotEmpty()).
+				Value(&claim.Dir).
+				Run()
+			utils.CheckErr(err)
+
+			var uidStr, gidStr string
+			err = huh.NewInput().
+				Title("Container UID").
+				Description("Numeric UID the container process runs as").
+				Validate(func(s string) error {
+					if s == "" {
+						return errors.New("uid is required")
+					}
+					return nil
+				}).
+				Value(&uidStr).
+				Run()
+			utils.CheckErr(err)
+
+			err = huh.NewInput().
+				Title("Container GID").
+				Description("Numeric GID the container process runs as").
+				Validate(func(s string) error {
+					if s == "" {
+						return errors.New("gid is required")
+					}
+					return nil
+				}).
+				Value(&gidStr).
+				Run()
+			utils.CheckErr(err)
+
+			uid, err := parseUint(uidStr)
+			utils.CheckErr(err)
+			gid, err := parseUint(gidStr)
+			utils.CheckErr(err)
+
+			claim.UID = uid
+			claim.GID = gid
+
+			app.Spec.VolumeClaims = append(app.Spec.VolumeClaims, claim)
+
+			var addAnother bool
+			err = huh.NewConfirm().
+				Title("Add another volume claim?").
+				Value(&addAnother).
+				Run()
+			utils.CheckErr(err)
+
+			if !addAnother {
+				break
+			}
+		}
+	}
+
 	var addRegistry bool
 	err = huh.NewConfirm().
 		Title("Add private registry credentials?").
@@ -239,4 +310,13 @@ func (app *App) WriteConfig() {
 	utils.CheckErr(err)
 	err = f.Sync()
 	utils.CheckErr(err)
+}
+
+// parseUint converts a decimal string to an int. Negative values are rejected.
+func parseUint(s string) (int, error) {
+	v, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("must be a non-negative integer: %w", err)
+	}
+	return int(v), nil
 }

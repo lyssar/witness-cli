@@ -138,15 +138,23 @@ func TestDockerComposeNoDriftNoApply(t *testing.T) {
 	runner := &recordingRunner{}
 	p := NewDockerCompose(runner)
 	app := application.Application{Spec: application.Spec{ComposeFiles: []string{"compose.yaml"}}}
+	// Neither ComposeFilesChanged nor SecretsChanged is set. Apply only
+	// executes in response to detected drift; the caller decides whether
+	// Apply should be invoked. When invoked, docker compose up must always
+	// run so manifest-only changes (e.g. volume claims) take effect.
 	runtime := RuntimeContext{RuntimeSlug: "apps-hello", LiveDir: root}
 
 	if err := p.Apply(context.Background(), runtime, app); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
 
-	if len(runner.calls) != 0 {
-		t.Fatalf("expected no command calls for no drift, got %d: %#v", len(runner.calls), runner.calls)
+	if len(runner.calls) != 1 {
+		t.Fatalf("expected 1 command call, got %d: %#v", len(runner.calls), runner.calls)
 	}
+	args := runner.calls[0].args
+	assertContains(t, args, "up")
+	assertNotContains(t, args, "--force-recreate")
+	assertContains(t, args, "--remove-orphans")
 }
 
 func TestDockerComposeBothDriftForceRecreate(t *testing.T) {

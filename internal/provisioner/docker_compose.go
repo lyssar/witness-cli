@@ -56,20 +56,16 @@ func (p *DockerCompose) Apply(ctx context.Context, runtime RuntimeContext, app a
 		}
 	}
 
-	// Compose file changes: Docker detects them and recreates as needed.
-	// Secret-only changes: Docker can't detect secret file content changes,
-	// so we need --force-recreate to re-mount Docker secrets.
-	// When both changed, --force-recreate is still required for secret re-mounting.
-	switch {
-	case runtime.ComposeFilesChanged || runtime.SecretsChanged:
-		args := []string{"up", "--detach", "--remove-orphans"}
-		if runtime.SecretsChanged {
-			args = append(args, "--force-recreate")
-		}
-		return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, args...)...)
-	default:
-		return nil
+	// Apply is only called when drift was detected, so we always issue
+	// docker compose up. Secret-only changes add --force-recreate because
+	// Docker cannot detect secret file content changes and would otherwise
+	// skip the service. Compose-file and manifest-only changes (including
+	// volume claims) rely on Docker's own change detection.
+	args := []string{"up", "--detach", "--remove-orphans"}
+	if runtime.SecretsChanged {
+		args = append(args, "--force-recreate")
 	}
+	return p.runner.Run(ctx, runtime.LiveDir, "docker", composeArgs(runtime, app, args...)...)
 }
 
 // dockerLogin authenticates with the docker registry before pulling images.
