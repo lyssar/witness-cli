@@ -62,8 +62,61 @@ Prompts for:
 - **Provisioner type** — `docker-compose` (currently the only option)
 - **Compose files** — path per prompt, empty to finish
 - **Secrets** — optional: source file, target file, decryptor (`age`)
+- **Volume claims** — optional: bind-mount directory, container UID, container GID
 
 Output: `witness-app.yaml`
+
+---
+
+## `witness update-app`
+
+Update an existing Application manifest interactively.
+
+```bash
+witness update-app -a ~/.config/witness/my-server/age.key
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `-a, --age-key` | `""` | Path to age private key for secret encryption |
+
+Prompts for the manifest path, then allows adding or updating:
+
+- **Registry credentials** — docker registry auth
+- **Secrets** — encrypted file sources and targets
+- **Volume claims** — bind-mount directory ownership
+- **Compose files** — additional docker-compose file paths
+
+---
+
+## Volume Claims {: #volume-claims}
+
+Volume claims let you declare the container UID/GID that should own a bind-mount directory. This is needed when a container image hardcodes a non-root user and Docker cannot auto-detect the correct ownership.
+
+```yaml
+spec:
+  volumeClaims:
+    - dir: data
+      uid: 1000
+      gid: 1000
+```
+
+| Field | Description |
+|---|---|
+| `dir` | Bind-mount directory relative to the compose file (e.g., `data`) |
+| `uid` | Numeric container user ID (0–65535) |
+| `gid` | Numeric container group ID (0–65535) |
+
+**How it works:**
+1. At deploy time, the witness binary receives `CAP_CHOWN` via `setcap`
+2. The systemd unit configures `AmbientCapabilities=CAP_CHOWN`
+3. On every reconcile, the runner checks if claimed directories exist with correct ownership
+4. Missing or mis-owned directories are recreated and `chown`ed
+5. Containers are restarted with `--force-recreate` to pick up the new ownership
+
+**Requirements:** The target server needs `libcap2-bin` installed (`sudo apt install libcap2-bin`). Without it, the deploy warns and volume claims degrade to a no-op — the operator must `chown` directories manually.
 
 ---
 
@@ -135,10 +188,12 @@ witness deploy my-observer.yaml \
 **Systemd hardening** applied to service unit:
 
 ```
-ProtectSystem=strict
-ProtectHome=yes
+ProtectSystem=full
+ProtectHome=no
 PrivateTmp=yes
-NoNewPrivileges=yes
+AmbientCapabilities=CAP_CHOWN
+CapabilityBoundingSet=~CAP_SYS_ADMIN CAP_NET_ADMIN CAP_SYS_PTRACE
+RestrictSUIDSGID=yes
 MemoryDenyWriteExecute=yes
 SystemCallFilter=@system-service
 ```
