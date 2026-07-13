@@ -129,20 +129,16 @@ func preserveVolumeDirs(d *destinationFS, oldLive, stage string, composeFiles []
 			newDir := filepath.Join(stage, relDir)
 			if info, err := d.root.Lstat(newDir); err == nil && info.IsDir() {
 				// Already present in stage; apply claim ownership if configured.
-				if claim, ok := claimMap[filepath.ToSlash(relDir)]; ok {
-					if err := d.root.Chown(newDir, claim.UID, claim.GID); err != nil {
-						return fmt.Errorf("applying volume claim ownership to %q: %w", src, err)
-					}
+				if err := applyVolumeClaim(d, claimMap, relDir, newDir, src); err != nil {
+					return err
 				}
 				continue
 			}
 			if err := copyDirRooted(d, oldDir, newDir); err != nil {
 				return fmt.Errorf("preserving volume directory %q from old live: %w", src, err)
 			}
-			if claim, ok := claimMap[filepath.ToSlash(relDir)]; ok {
-				if err := d.root.Chown(newDir, claim.UID, claim.GID); err != nil {
-					return fmt.Errorf("applying volume claim ownership to %q: %w", src, err)
-				}
+			if err := applyVolumeClaim(d, claimMap, relDir, newDir, src); err != nil {
+				return err
 			}
 		}
 	}
@@ -171,17 +167,32 @@ func ensureVolumeDirs(d *destinationFS, stage string, composeFiles []string, vol
 			if err := d.root.MkdirAll(dir, 0o755); err != nil {
 				return fmt.Errorf("creating volume directory %q: %w", src, err)
 			}
-			if claim, ok := claimMap[filepath.ToSlash(relDir)]; ok {
-				if err := d.root.Chown(dir, claim.UID, claim.GID); err != nil {
-					return fmt.Errorf("applying volume claim ownership to %q: %w", src, err)
-				}
+			if err := applyVolumeClaim(d, claimMap, relDir, dir, src); err != nil {
+				return err
 			}
 		}
 	}
 	return nil
 }
 
-// volumeClaimMap builds a lookup from normalized dir path to (uid, gid).
+// applyVolumeClaim sets ownership on a volume directory if a matching claim
+// exists. Permission errors (EPERM) are silently skipped because an
+// unprivileged process may lack CAP_CHOWN; the operator is expected to grant
+// the capability to the witness daemon or pre-create directories with correct
+// ownership.
+func applyVolumeClaim(d *destinationFS, claimMap map[string]application.VolumeClaim, relDir, absDir, src string) error {
+	claim, ok := claimMap[filepath.ToSlash(relDir)]
+	if !ok {
+		return nil
+	}
+	if err := d.root.Chown(absDir, claim.UID, claim.GID); err != nil {
+		if os.IsPermission(err) {
+			return nil // unprivileged process, operator handles ownership externally
+		}
+		return fmt.Errorf("applying volume claim ownership to %q: %w", src, err)
+	}
+	return nil
+}
 func volumeClaimMap(claims []application.VolumeClaim) map[string]application.VolumeClaim {
 	m := make(map[string]application.VolumeClaim, len(claims))
 	for _, c := range claims {

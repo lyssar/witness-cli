@@ -388,6 +388,14 @@ func (dh *DeployHandler) DeployToHost(observer Observer) (retErr error) {
 	}
 	_, _ = dh.runSudo(client, fmt.Sprintf("mv %s /usr/local/bin/witness && chmod 755 /usr/local/bin/witness", utils.ShellQuote(remoteBinaryTmpPath)), nil)
 
+	// Grant CAP_CHOWN so witness can apply volume claim ownership during reconcile.
+	// The witness daemon runs unprivileged but needs to chown bind-mount directories
+	// to container UIDs declared in volumeClaims. setcap may fail on systems without
+	// libcap2-bin; this is non-fatal — volume claims degrade to a no-op without it.
+	if out, err := dh.runSudo(client, "setcap cap_chown+ep /usr/local/bin/witness", nil); err != nil {
+		utils.LogInfo("Failed to set CAP_CHOWN on witness binary — volume claims will not apply ownership (non-fatal)", "error", err, "output", string(out))
+	}
+
 	// Verify binary was installed
 	binCheck, _ := dh.runSudo(client, "command -v witness", nil)
 	if strings.TrimSpace(string(binCheck)) == "" {
