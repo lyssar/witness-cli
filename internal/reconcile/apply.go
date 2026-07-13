@@ -53,11 +53,15 @@ func promoteRootedStagingToLive(destination *destinationFS, app application.Disc
 		if err := preserveVolumeDirs(destination, live, stage, app.Application.Spec.ComposeFiles, app.Application.Spec.VolumeClaims); err != nil {
 			return "", fmt.Errorf("preserving docker volume directories: %w", err)
 		}
-	} else if os.IsNotExist(statErr) {
-		if err := ensureVolumeDirs(destination, stage, app.Application.Spec.ComposeFiles, app.Application.Spec.VolumeClaims); err != nil {
-			return "", fmt.Errorf("creating docker volume directories: %w", err)
-		}
-	} else {
+	}
+	// Always ensure claimed directories exist — covers first deploy and
+	// recovery after manual deletion of volume directories on updates.
+	if err := ensureVolumeDirs(destination, stage, app.Application.Spec.ComposeFiles, app.Application.Spec.VolumeClaims); err != nil {
+		return "", fmt.Errorf("creating docker volume directories: %w", err)
+	}
+	if _, statErr := destination.root.Lstat(live); os.IsNotExist(statErr) {
+		// First deploy — fall through to promotion below
+	} else if statErr != nil {
 		return "", fmt.Errorf("stat live app: %w", statErr)
 	}
 

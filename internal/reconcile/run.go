@@ -242,6 +242,16 @@ func (r *Runner) Run(ctx context.Context) error {
 		)
 
 		currentState := stateFile.Applications[app.OperationalID]
+		// If a volume claim directory is missing from the live tree, force
+		// apply so ensureVolumeDirs recreates it.
+		if !appEntry.drift.HasDrift && len(app.Application.Spec.VolumeClaims) > 0 {
+			if missing, err := volumeClaimDirsNeedFix(destination, app); err != nil {
+				r.logger.Warn("Checking volume claim directories failed", "operationalID", app.OperationalID, "error", err)
+			} else if missing {
+				appEntry.drift.HasDrift = true
+				r.logger.Info("Volume claim directory missing or wrong ownership — forcing apply", "operationalID", app.OperationalID)
+			}
+		}
 		needsApply := appEntry.drift.HasDrift || currentState.Status == state.StatusFailed || currentState.Status == state.StatusDeleting
 		if !needsApply {
 			currentState = desiredStateEntry(now, app, resolvedCommit)

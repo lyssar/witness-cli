@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/lyssar/witness-cli/internal/application"
 	"gopkg.in/yaml.v3"
@@ -193,6 +194,53 @@ func applyVolumeClaim(d *destinationFS, claimMap map[string]application.VolumeCl
 	}
 	return nil
 }
+
+// volumeClaimDirsNeedFix checks whether any volume claim directory is absent
+// from the live tree or has incorrect ownership. Returns true if a fix is needed.
+func volumeClaimDirsNeedFix(d *destinationFS, app application.DiscoveredApplication) (bool, error) {
+	live, err := liveRef(app.OperationalID)
+	if err != nil {
+		return false, err
+	}
+	claimMap := volumeClaimMap(app.Application.Spec.VolumeClaims)
+	for _, composeFile := range app.Application.Spec.ComposeFiles {
+		composeRef := filepath.Join(live, filepath.FromSlash(composeFile))
+		sources, err := composeVolumeSources(d, composeRef)
+		if err != nil {
+			return false, err
+		}
+		composeDir := filepath.Dir(filepath.FromSlash(composeFile))
+		for _, src := range sources {
+			relDir := src
+			if composeDir != "." {
+				relDir = filepath.Join(composeDir, src)
+			}
+			claim, ok := claimMap[filepath.ToSlash(relDir)]
+			if !ok {
+				continue
+			}
+			absDir := filepath.Join(live, relDir)
+			info, err := os.Stat(d.absolute(absDir))
+			if os.IsNotExist(err) {
+				return true, nil
+			}
+			if err != nil {
+				return false, err
+			}
+			if !info.IsDir() {
+				return false, fmt.Errorf("volume claim path %q is not a directory", claim.Dir)
+			}
+			if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+				if stat.Uid != uint32(claim.UID) || stat.Gid != uint32(claim.GID) {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
+}
+
+// volumeClaimMap builds a lookup from normalized dir path to (uid, gid).
 func volumeClaimMap(claims []application.VolumeClaim) map[string]application.VolumeClaim {
 	m := make(map[string]application.VolumeClaim, len(claims))
 	for _, c := range claims {
