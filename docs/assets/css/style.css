@@ -412,7 +412,8 @@ a:visited { color: #c62828; }
   /* Burger visible */
   .nav-burger {
     display: flex;
-    margin: 0.5rem auto;
+    margin: 1rem auto;
+    border-color: transparent;
   }
 
   /* Nav links hidden by default, shown when .nav-open */
@@ -442,7 +443,7 @@ a:visited { color: #c62828; }
   }
 
   .nod-nav {
-    padding: 0.25rem 0;
+    padding: 0.75rem 0;
   }
 
   .main-content { padding: 1.5rem 1rem 3rem; }
