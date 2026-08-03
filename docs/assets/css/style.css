@@ -22,10 +22,12 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 .container {
   max-width: 960px;
+  width: 100%;
   margin: 0 auto;
   padding: 0 1.5rem;
 }
@@ -232,6 +234,8 @@ a:visited { color: #c62828; }
   padding: 0.15rem 0.5rem;
   border-radius: 3px;
   border: 1px solid #331111;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .main-content pre {
@@ -419,7 +423,7 @@ a:visited { color: #c62828; }
     padding: 0;
   }
 
-  .nav-open .nod-nav .container {
+  .nod-nav.nav-open .container {
     display: flex;
   }
 
@@ -449,6 +453,10 @@ a:visited { color: #c62828; }
     overflow-x: auto;
     white-space: nowrap;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .main-content pre {
+    max-width: 100%;
   }
 }
 
