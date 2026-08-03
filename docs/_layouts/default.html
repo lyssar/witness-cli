@@ -18,6 +18,11 @@
       </div>
     </a>
     <nav class="nod-nav">
+      <button class="nav-burger" aria-label="Toggle navigation" aria-expanded="false">
+        <span class="burger-line"></span>
+        <span class="burger-line"></span>
+        <span class="burger-line"></span>
+      </button>
       <div class="container">
         <a href="{{ site.baseurl }}/">Home</a>
         <a href="{{ site.baseurl }}/installation">Install</a>
@@ -39,5 +44,18 @@
       <p class="footer-text">Witness — the future's watcher for your fleet</p>
     </div>
   </footer>
+
+  <script>
+    (function() {
+      const burger = document.querySelector('.nav-burger');
+      const nav = document.querySelector('.nod-nav');
+      if (!burger || !nav) return;
+      burger.addEventListener('click', function() {
+        const expanded = burger.getAttribute('aria-expanded') === 'true';
+        burger.setAttribute('aria-expanded', !expanded);
+        nav.classList.toggle('nav-open');
+      });
+    })();
+  </script>
 </body>
 </html>
