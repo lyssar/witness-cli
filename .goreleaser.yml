@@ -1,0 +1,61 @@
+version: 2
+
+project_name: witness
+
+builds:
+  - id: witness
+    main: .
+    binary: witness
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/lyssar/witness-cli/version.Version={{ .Version }}
+
+archives:
+  - id: witness
+    formats:
+      - tar.gz
+    name_template: witness_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - none*
+
+changelog:
+  use: git
+  sort: asc
+  groups:
+    - title: Breaking changes
+      regexp: '^.*?!:.*$'
+      order: 0
+    - title: Features
+      regexp: '^.*?feat(\(.+\))?!?:.+$'
+      order: 1
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))?!?:.+$'
+      order: 2
+    - title: Performance
+      regexp: '^.*?perf(\(.+\))?!?:.+$'
+      order: 3
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - '^chore\(release\):'
+      - '^chore:'
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^build:'
+      - '^style:'
+      - Merge pull request
+      - Merge branch
+
+release:
+  prerelease: auto

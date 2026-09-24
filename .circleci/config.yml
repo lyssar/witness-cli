@@ -1,70 +1,67 @@
 version: 2.1
 
-commands:
-  install_task:
-    steps:
-      - run:
-          name: Install task
-          command: |
-            go install github.com/go-task/task/v3/cmd/task@v3.44.1
-            echo 'export PATH="$(go env GOPATH)/bin:/usr/local/go/bin:$PATH"' >> "$BASH_ENV"
+orbs:
+  go: circleci/go@3.0.4
 
-  install_age:
-    steps:
-      - run:
-          name: Install age (age-keygen)
-          command: |
-            sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends age
-
-  install_golangci_lint:
-    steps:
-      - run:
-          name: Install golangci-lint
-          command: |
-            go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.5.0
-            echo 'export PATH="$(go env GOPATH)/bin:/usr/local/go/bin:$PATH"' >> "$BASH_ENV"
-
-  install_go_machine:
-    steps:
-      - run:
-          name: Install Go 1.25.12
-          command: |
-            curl -fsSL "https://go.dev/dl/go1.25.12.linux-amd64.tar.gz" -o /tmp/go.tgz
-            printf '%s  %s\n' '234828b7a89e0e303d2556310ee549fbcf253d28de937bac3da13d6294262ac1' /tmp/go.tgz | sha256sum -c -
-            sudo rm -rf /usr/local/go
-            sudo tar -C /usr/local -xzf /tmp/go.tgz
-            echo 'export PATH="/usr/local/go/bin:$PATH"' >> "$BASH_ENV"
+executors:
+  node:
+    docker:
+      - image: cimg/node:24.15.0
+  go:
+    docker:
+      - image: cimg/go:1.25.14
 
 jobs:
-  validate:
-    docker:
-      - image: cimg/go:1.25.12
+  semantic_release:
+    executor: node
     steps:
       - checkout
-      - install_task
-      - install_golangci_lint
       - run:
-          name: Run Go validation suite
-          command: task validate
+          name: Install semantic-release and plugins
+          command: |
+            sudo npm install -g --no-audit --no-fund \
+              semantic-release@25.0.9 \
+              @semantic-release/commit-analyzer@13.0.1 \
+              @semantic-release/release-notes-generator@14.1.1 \
+              @semantic-release/changelog@7.0.0 \
+              @semantic-release/git@11.0.1 \
+              conventional-changelog-conventionalcommits@8.0.0
+      - run:
+          name: Configure git identity
+          command: |
+            git config user.name "witness-cli release bot"
+            git config user.email "release-bot@lyssar.github.com"
+      - run:
+          name: Run semantic-release
+          command: semantic-release
 
-  local_harness_smoke:
-    machine:
-      image: ubuntu-2404:current
+  release:
+    executor: go
     steps:
       - checkout
-      - install_go_machine
-      - install_task
+      - go/install-goreleaser:
+          version: v2.18.2
       - run:
-          name: Check Docker Compose availability
-          command: docker compose version
-      - install_age
-      - run:
-          name: Run reduced-scope harness smoke path
-          command: task local:smoke
+          name: Publish GitHub release
+          command: goreleaser release --clean
 
 workflows:
-  ci:
+  semantic-release:
     jobs:
-      - validate
-      - local_harness_smoke
+      - semantic_release:
+          context: release
+          filters:
+            branches:
+              only: main
+            tags:
+              ignore: /.*/
+
+  publish:
+    jobs:
+      - release:
+          context: release
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+$/

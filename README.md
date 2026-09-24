@@ -72,7 +72,7 @@ task local:smoke
 
 This reduced harness does **not** attempt to simulate SSH, sudo, systemd, full target-host bootstrap, or real docker-compose apply execution.
 
-CircleCI now runs both `task validate` and `task local:smoke`.
+CircleCI runs the release pipeline only (semantic-release on `main` + GoReleaser on `v*` tags); `task validate` and `task local:smoke` remain local-only.
 
 See [Local Harness documentation](https://lyssar.github.io/witness-cli/local-harness) for exact scope and mounted paths.
 
