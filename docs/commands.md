@@ -116,6 +116,8 @@ spec:
 4. Missing or mis-owned directories are recreated and `chown`ed
 5. Containers are restarted with `--force-recreate` to pick up the new ownership
 
+**Volume data preservation:** On updates, Docker bind-mount directories are preserved by atomic same-filesystem rename (move), not copy. The old live tree is first moved aside to `.previous`, then each volume directory is renamed from the backup into the promoted staging tree. Moving preserves container-owned ownership and modes — including 0600 files such as Caddy's ACME private keys — without the non-root observer needing to read file contents, and without granting `CAP_DAC_READ_SEARCH` or `CAP_DAC_OVERRIDE`. A committed non-empty directory in the new tree wins over old live data; a failed promotion reverses the moves before restoring the old live tree.
+
 **Requirements:** The target server needs `libcap2-bin` installed (`sudo apt install libcap2-bin`). Without it, the deploy warns and volume claims degrade to a no-op — the operator must `chown` directories manually.
 
 ---

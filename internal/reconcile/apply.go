@@ -45,22 +45,10 @@ func promoteRootedStagingToLive(destination *destinationFS, app application.Disc
 		return "", fmt.Errorf("copying staging tree into destination: %w", err)
 	}
 
-	// On updates (live directory exists), preserve Docker bind-mount volume
-	// directories from the old live tree so persistent data survives the
-	// promotion rename cycle and retains correct process-user ownership.
-	// On first deploy, pre-create empty volume directories so they are
-	// owned by the process user rather than root:root (Docker default).
-	if _, statErr := destination.root.Lstat(live); statErr == nil {
-		if err := preserveVolumeDirs(destination, live, stage, app.Application.Spec.ComposeFiles, app.Application.Spec.VolumeClaims); err != nil {
-			if errors.Is(err, errVolumeClaim) {
-				slog.Warn("Volume claim ownership not applied during preserve", "operationalID", app.OperationalID, "error", err)
-			} else {
-				return "", fmt.Errorf("preserving docker volume directories: %w", err)
-			}
-		}
-	}
 	// Always ensure claimed directories exist — covers first deploy and
 	// recovery after manual deletion of volume directories on updates.
+	// On updates this pre-creates empty directories that the volume-dir
+	// moves below replace.
 	if err := ensureVolumeDirs(destination, stage, app.Application.Spec.ComposeFiles, app.Application.Spec.VolumeClaims); err != nil {
 		if errors.Is(err, errVolumeClaim) {
 			// Volume claim chown failed — log and continue, don't abort.
@@ -86,7 +74,55 @@ func promoteRootedStagingToLive(destination *destinationFS, app application.Disc
 	} else if !os.IsNotExist(err) {
 		return "", fmt.Errorf("stat live app: %w", err)
 	}
+
+	// On updates (live directory existed), move Docker bind-mount volume
+	// directories from the old live tree (now in backup) into the stage tree
+	// so persistent data survives the promotion rename cycle. Moving rather
+	// than copying preserves container-owned ownership and modes without
+	// requiring read access to the data. A failure reverses the moves and
+	// leaves the old live tree intact in backup.
+	var moved []string
+	if _, statErr := destination.root.Lstat(backup); statErr == nil {
+		var preserveErr error
+		moved, preserveErr = preserveVolumeDirs(destination, backup, stage, app.Application.Spec.ComposeFiles, app.Application.Spec.VolumeClaims)
+		if preserveErr != nil {
+			if errors.Is(preserveErr, errVolumeClaim) {
+				slog.Warn("Volume claim ownership not applied during preserve", "operationalID", app.OperationalID, "error", preserveErr)
+			} else {
+				if rollbackErr := reverseVolumeMoves(destination, stage, backup, moved); rollbackErr != nil {
+					return "", errors.Join(
+						fmt.Errorf("preserving docker volume directories: %w", preserveErr),
+						fmt.Errorf("reversing volume directory moves after preserve failure: %w", rollbackErr),
+					)
+				}
+				// Restore the old live tree so the app returns to its prior
+				// healthy state; otherwise the next reconcile would treat the
+				// app as first-deploy and RemoveAll(backup) would discard the
+				// preserved container data.
+				if _, restoreErr := destination.root.Lstat(backup); restoreErr == nil {
+					if rollbackErr := destination.root.Rename(backup, live); rollbackErr != nil {
+						return "", errors.Join(
+							fmt.Errorf("preserving docker volume directories: %w", preserveErr),
+							fmt.Errorf("restoring prior live app after preserve failure: %w", rollbackErr),
+						)
+					}
+				} else if !os.IsNotExist(restoreErr) {
+					return "", errors.Join(
+						fmt.Errorf("preserving docker volume directories: %w", preserveErr),
+						fmt.Errorf("checking prior live app for rollback: %w", restoreErr),
+					)
+				}
+				return "", fmt.Errorf("preserving docker volume directories: %w", preserveErr)
+			}
+		}
+	}
 	if err := destination.root.Rename(stage, live); err != nil {
+		if rollbackErr := reverseVolumeMoves(destination, stage, backup, moved); rollbackErr != nil {
+			return "", errors.Join(
+				fmt.Errorf("promoting rooted staging tree: %w", err),
+				fmt.Errorf("reversing volume directory moves after failed promotion: %w", rollbackErr),
+			)
+		}
 		if _, restoreErr := destination.root.Lstat(backup); restoreErr == nil {
 			if rollbackErr := destination.root.Rename(backup, live); rollbackErr != nil {
 				return "", errors.Join(
@@ -109,6 +145,22 @@ func promoteRootedStagingToLive(destination *destinationFS, app application.Disc
 		return "", fmt.Errorf("removing live backup: %w", err)
 	}
 	return live, nil
+}
+
+// reverseVolumeMoves moves each previously moved volume directory back from
+// the stage tree to the backup tree, in reverse order, so rollback restores
+// the old live layout after a failed promotion.
+func reverseVolumeMoves(d *destinationFS, stage, backup string, moved []string) error {
+	var errs []error
+	for i := len(moved) - 1; i >= 0; i-- {
+		rel := moved[i]
+		from := filepath.Join(stage, rel)
+		to := filepath.Join(backup, rel)
+		if err := d.root.Rename(from, to); err != nil {
+			errs = append(errs, fmt.Errorf("reversing volume directory move %q: %w", rel, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func reconcileDeletedApp(ctx context.Context, destination *destinationFS, operationalID string, entry state.Entry, p provisioner.Provisioner, now time.Time) (state.Entry, bool, error) {

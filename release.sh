@@ -1,15 +1,10 @@
 #!/bin/bash
-set -euo pipefail
-
 VERSION="${1:?Usage: ./release.sh VERSION}"
 
-git add -A
-git commit -m "fix: install GitHub host key during deploy
-
-Pre-install github.com to known_hosts so witness reconcile can
-clone repos without interactive SSH host verification prompt."
-
-git push --force origin main
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "ERROR: VERSION must be strict semver (MAJOR.MINOR.PATCH, numeric only), got '$VERSION'" >&2
+  exit 1
+fi
 
 git tag -d "v${VERSION}" 2>/dev/null; git push origin --delete "v${VERSION}" 2>/dev/null; true
 git tag "v${VERSION}"
@@ -26,16 +21,6 @@ done
 gh release delete "v${VERSION}" --yes 2>/dev/null; true
 gh release create "v${VERSION}" \
   --title "v${VERSION}" \
-  --notes "## Bug Fixes
-- Install GitHub host key during deploy (known_hosts)
-- Fix ObserverConfigPath: include project name in reconcile path
-- Fix WorkingDirectory: point to config root, not home
-- Fix permissions: recursive chown after file uploads
-- Fix ReloadSystemD: ignore SSH EOF errors
-- Fix systemd-analyze verify: use service names instead of glob
-- Fix deploy: create temp dir without sudo (SFTP runs as SSH user)
-- Fix SSH EOF errors in all deploy operations
-- Fix deploy: check age as root, not execution user
-- Fix deploy: remove witness binary pre-check
-- Fix deploy: treat 'not-found' service state as expected on first deploy" \
+  --notes "## Improvements
+- Volume claim apply now triggers \`docker compose up --force-recreate\` so containers restart and pick up the corrected bind-mount directory ownership." \
   .local/release/witness_${VERSION}_*.tar.gz
