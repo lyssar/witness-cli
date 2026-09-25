@@ -57,7 +57,7 @@ The wizard prompts for:
 | Compose files | `compose.yaml` | Paths relative to app directory |
 | Secrets | (optional) | Encrypted files + decrypt target |
 
-Output is a `witness-app.yaml` file. Place it in your Git repo:
+Output is a `witness.yaml` file. Place it in your Git repo:
 
 ```
 apps/
@@ -125,10 +125,10 @@ SSH into the server as the execution user and check:
 ssh witness@myserver.example.com
 
 # Check timer status
-systemctl --user status witness.timer
+systemctl status witness.timer
 
 # Check last reconcile
-journalctl --user -u witness.service --since "5 minutes ago"
+journalctl -u witness.service --since "5 minutes ago"
 
 # Manual reconcile (if needed)
 witness reconcile ~/.config/witness/my-observer/

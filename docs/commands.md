@@ -20,6 +20,7 @@ witness init
 | Flag | Default | Description |
 |---|---|---|
 | `-k, --age-key` | `""` | Path to existing age private key |
+| `--local` | `false` | Run locally instead of against a remote host |
 
 The interactive wizard prompts for:
 
@@ -64,7 +65,7 @@ Prompts for:
 - **Secrets** — optional: source file, target file, decryptor (`age`)
 - **Volume claims** — optional: bind-mount directory, container UID, container GID
 
-Output: `witness-app.yaml`
+Output: `witness.yaml`
 
 ---
 
@@ -172,6 +173,7 @@ witness deploy my-observer.yaml \
 | `-k, --ssh-key` | `""` | SSH private key path (optional, uses SSH config if omitted) |
 | `--host` | `""` | Remote host to deploy to |
 | `--binary-path` | auto-detect | Path to witness binary to upload |
+| `--skip-prereq-check` | `false` | Skip the prerequisite check (for already-provisioned hosts) |
 
 <div class="highlight-box">
 <strong>Two different users:</strong><br>
@@ -202,6 +204,32 @@ SystemCallFilter=@system-service
 
 ---
 
+## `witness doctor`
+
+Check that a target host has the prerequisites needed to run Witness.
+
+```bash
+witness doctor --host myserver.example.com --ssh-user shens
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--host` | `""` | Remote host to check |
+| `-u, --ssh-user` | `""` | SSH user with sudo access |
+| `-k, --ssh-key` | `""` | SSH private key path (optional, uses SSH config if omitted) |
+| `--local` | `false` | Check the local machine instead of a remote host |
+| `--check-only` | `false` | Report only; do not install anything |
+
+`witness doctor` verifies the OS and the tools Witness needs on the target
+host: `git`, `age`, `libcap`/`setcap`, `docker`, and `docker compose`. It runs
+in report mode by default. With confirmation it can interactively install the
+missing tools. `witness deploy` invokes `witness doctor` at the start of every
+deploy.
+
+---
+
 ## `witness version`
 
 Print the installed version:
@@ -210,4 +238,4 @@ Print the installed version:
 witness version
 ```
 
-Output includes the build version from `git describe`.
+Output includes the build version and VCS revision, e.g. `witness <version> (commit <sha>)`.

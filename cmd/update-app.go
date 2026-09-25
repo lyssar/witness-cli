@@ -7,7 +7,7 @@ import (
 
 var updateAppCmd = &cobra.Command{
 	Use:   "update-app",
-	Short: "Update an existing Skuld application manifest",
+	Short: "Update an existing Witness application manifest",
 	Long: `Updates an existing Application manifest YAML file interactively.
 
 Can add or update registry credentials, secrets, and compose files.

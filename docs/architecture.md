@@ -138,7 +138,7 @@ errors so it cannot disclose the password.
                      ▼
 ┌─────────────────────────────────────────────────────────┐
 │                  Sync Directory                          │
-│  ~/.local/harness/runtime/repo/                          │
+│  ~/.config/witness/<project>/repo/                          │
 │  ├── .git/                                               │
 │  └── apps/hello/witness.yaml                              │
 └────────────────────┬────────────────────────────────────┘

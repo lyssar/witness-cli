@@ -9,7 +9,7 @@ import (
 var deployCmd = &cobra.Command{
 	Use:   "deploy [APP_OF_APPS_MANIFEST]",
 	Short: "Will deploy the given app of apps to the [host]",
-	Long: `Creates a .service with the app of apps name and configures the Skuld reconciler
+	Long: `Creates a .service with the app of apps name and configures the Witness reconciler
 to reconcile against configured source repo (the source of truth) every few minutes.
 
 The command installs the service unit and ensures continuous, periodic

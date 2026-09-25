@@ -7,7 +7,7 @@ import (
 
 var initCmd = &cobra.Command{
 	Use:   "init [OBSERVER_NAME]",
-	Short: "Initialize a Skuld observer configuration",
+	Short: "Initialize a Witness observer configuration",
 	Long: `Creates an Observer manifest YAML file interactively.
 
 Prompts for the observer name, execution user, destination path,

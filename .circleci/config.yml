@@ -30,7 +30,7 @@ jobs:
           name: Configure git identity
           command: |
             git config user.name "witness-cli release bot"
-            git config user.email "release-bot@lyssar.github.com"
+            git config user.email "release-bot@users.noreply.github.com"
       - run:
           name: Run semantic-release
           command: semantic-release

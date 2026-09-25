@@ -17,7 +17,7 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "witness",
-	Short: "Skuld CLI – the future’s watcher for your fleet",
+	Short: "Witness CLI – the future’s watcher for your fleet",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		logLevelStr := strings.ToUpper(os.Getenv("LOG_LEVEL"))
 		debug, _ := cmd.Flags().GetBool("debug")

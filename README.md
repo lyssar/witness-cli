@@ -78,7 +78,7 @@ See [Local Harness documentation](https://lyssar.github.io/witness-cli/local-har
 
 ## Development
 
-> Development-only workflow for testing the `witness doctor` feature locally. Not part of production setup.
+> `witness doctor` checks target-host prerequisites and is invoked by `witness deploy` at the start of every deploy. The commands below exercise it locally and against remote hosts.
 
 Build and validate:
 

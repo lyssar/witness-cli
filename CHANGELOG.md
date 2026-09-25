@@ -1,5 +1,12 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
 ## [0.2.0](https://github.com/lyssar/witness-cli/compare/v0.1.49...v0.2.0) (2026-09-24)
 
 ### Features
@@ -10,10 +17,3 @@
 
 * copy of project files ([809673a](https://github.com/lyssar/witness-cli/commit/809673adc1b5f5b16a0433bd4dcfb9dd10a9cc05))
 * minor fixes ([15824d4](https://github.com/lyssar/witness-cli/commit/15824d4e68d2f238f5954534052c0a1e1f99ddba))
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]

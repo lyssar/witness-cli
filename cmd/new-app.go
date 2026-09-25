@@ -7,7 +7,7 @@ import (
 
 var newAppCmd = &cobra.Command{
 	Use:   "new-app",
-	Short: "Create a new Skuld application manifest",
+	Short: "Create a new Witness application manifest",
 	Long: `Creates an Application manifest YAML file interactively.
 
 Prompts for the app name, provisioner type, compose files,

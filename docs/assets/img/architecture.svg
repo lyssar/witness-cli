@@ -38,7 +38,7 @@
   <rect width="800" height="900" fill="url(#bgGrad)" rx="8"/>
 
   <!-- Title -->
-  <text x="400" y="45" text-anchor="middle" font-family="'Share Tech Mono', monospace" font-size="18" fill="#cc0000" font-weight="bold" letter-spacing="4">SKULD RECONCILIATION PIPELINE</text>
+  <text x="400" y="45" text-anchor="middle" font-family="'Share Tech Mono', monospace" font-size="18" fill="#cc0000" font-weight="bold" letter-spacing="4">WITNESS RECONCILIATION PIPELINE</text>
   <line x1="100" y1="58" x2="700" y2="58" stroke="#331111" stroke-width="1"/>
 
   <!-- Phase labels -->
@@ -67,7 +67,7 @@
   <rect x="220" y="155" width="360" height="60" rx="4" fill="url(#boxGrad)" stroke="#555" stroke-width="1" filter="url(#shadow)"/>
   <text x="400" y="176" text-anchor="middle" font-family="'Share Tech Mono', monospace" font-size="12" fill="#cc0000">OBSERVER CONFIG</text>
   <text x="400" y="193" text-anchor="middle" font-family="'Share Tech Mono', monospace" font-size="9" fill="#888">manifest.yaml + age.key</text>
-  <text x="400" y="205" text-anchor="middle" font-family="'Share Tech Mono', monospace" font-size="8" fill="#666">~/.config/skuld-cli/&lt;project&gt;/</text>
+  <text x="400" y="205" text-anchor="middle" font-family="'Share Tech Mono', monospace" font-size="8" fill="#666">~/.config/witness/&lt;project&gt;/</text>
 
   <!-- Arrow: Observer → Sync -->
   <line x1="400" y1="215" x2="400" y2="245" stroke="#cc0000" stroke-width="1.5" marker-end="url(#arrowRed)"/>
@@ -84,7 +84,7 @@
   <!-- 2. Discover -->
   <rect x="310" y="250" width="180" height="60" rx="4" fill="url(#boxGrad)" stroke="#666" stroke-width="1" filter="url(#shadow)"/>
   <text x="400" y="274" text-anchor="middle" font-family="'Share Tech Mono', monospace" font-size="12" fill="#e53935" font-weight="bold">2. DISCOVER</text>
-  <text x="400" y="291" text-anchor="middle" font-family="'Share Tech Mono', monospace" font-size="9" fill="#888">find skuld.yaml files</text>
+  <text x="400" y="291" text-anchor="middle" font-family="'Share Tech Mono', monospace" font-size="9" fill="#888">find witness.yaml files</text>
 
   <!-- 3. Stage -->
   <rect x="520" y="250" width="180" height="60" rx="4" fill="url(#boxGrad)" stroke="#666" stroke-width="1" filter="url(#shadow)"/>
@@ -153,7 +153,7 @@
   <!-- Destination Box -->
   <rect x="200" y="660" width="350" height="55" rx="4" fill="url(#repoGrad)" stroke="#cc0000" stroke-width="1.5" filter="url(#shadow)"/>
   <text x="375" y="683" text-anchor="middle" font-family="'Share Tech Mono', monospace" font-size="12" fill="#ddd">DESTINATION</text>
-  <text x="375" y="700" text-anchor="middle" font-family="'Share Tech Mono', monospace" font-size="9" fill="#888">/var/lib/skuld/destination/apps/&lt;app&gt;/</text>
+  <text x="375" y="700" text-anchor="middle" font-family="'Share Tech Mono', monospace" font-size="9" fill="#888">/var/lib/witness/destination/apps/&lt;app&gt;/</text>
 
   <!-- Arrow: Destination → Running -->
   <line x1="375" y1="715" x2="375" y2="745" stroke="#cc0000" stroke-width="1.5" marker-end="url(#arrowRed)"/>

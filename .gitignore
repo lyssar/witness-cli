@@ -39,3 +39,32 @@ coverage.txt
 # OS files
 .DS_Store
 Thumbs.db
+
+# internal working files (kept locally, not in the public repo)
+STATUS.md
+TASKS.md
+DECISIONS.md
+AGENTS.md
+next.md
+.docs/
+.opencode/
+
+# key material and credentials
+*.pem
+*.key
+*.asc
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+credentials*.json
+kubeconfig
+.ssh/
+known_hosts
+
+# jekyll build artifacts
+_site/
+.jekyll-cache/
+.sass-cache/
