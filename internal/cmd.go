@@ -63,7 +63,17 @@ func ReconcileCmd(cmd *cobra.Command, args []string) error {
 func DeployCmd(cmd *cobra.Command, args []string) error {
 	deployHandler := NewDeployHandler(cmd).WithManifest(args[0])
 
-	err := deployHandler.Validate()
+	skipPrereq, err := cmd.Flags().GetBool("skip-prereq-check")
+	utils.CheckErr(err)
+	if !skipPrereq {
+		doctor := NewDoctorHandler(cmd)
+		if err := doctor.Run(); err != nil {
+			return err
+		}
+		deployHandler.Sudoer = doctor.Sudoer
+	}
+
+	err = deployHandler.Validate()
 	utils.CheckErr(err)
 
 	observer, err := NewObserverFromManifest(deployHandler.Manifest, deployHandler.AgeFilePath)

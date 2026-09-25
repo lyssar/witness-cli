@@ -76,6 +76,47 @@ CircleCI runs the release pipeline only (semantic-release on `main` + GoReleaser
 
 See [Local Harness documentation](https://lyssar.github.io/witness-cli/local-harness) for exact scope and mounted paths.
 
+## Development
+
+> Development-only workflow for testing the `witness doctor` feature locally. Not part of production setup.
+
+Build and validate:
+
+```bash
+task build
+task validate
+```
+
+Local non-interactive prerequisite report (installs nothing, non-zero exit if tools are missing):
+
+```bash
+./.local/bin/witness doctor --local --check-only
+```
+
+Local interactive prerequisite check (prompts before installing):
+
+```bash
+./.local/bin/witness doctor --local
+```
+
+Remote prerequisite check:
+
+```bash
+./.local/bin/witness doctor --host <host> --ssh-user <user> --check-only
+```
+
+Deploy skipping the prerequisite check (for already-provisioned hosts):
+
+```bash
+./.local/bin/witness deploy --host <host> --ssh-user <user> --skip-prereq-check --age-key <path>
+```
+
+Targeted unit tests for the doctor feature:
+
+```bash
+go test ./internal/ -run 'TestParseOSRelease|TestDoctorToolInstallCommands|TestResolvePkgMgr' -v
+```
+
 ## Manual Secret Inspection
 
 ```bash

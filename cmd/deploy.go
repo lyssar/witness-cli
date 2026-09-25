@@ -24,5 +24,6 @@ func init() {
 	deployCmd.Flags().StringP("ssh-key", "k", "", "The ssh key to use, optional. Make sure to have a ssh config for the host if ommited.")
 	deployCmd.Flags().String("host", "", "The host to deploy the observer to")
 	deployCmd.Flags().String("binary-path", "", "Path to the witness binary to upload (default: auto-detect)")
+	deployCmd.Flags().Bool("skip-prereq-check", false, "Skip the prerequisite check on the target host")
 	rootCmd.AddCommand(deployCmd)
 }
