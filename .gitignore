@@ -68,3 +68,4 @@ known_hosts
 _site/
 .jekyll-cache/
 .sass-cache/
+gitleaks*.json
