@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.0](https://github.com/lyssar/witness-cli/compare/v0.2.0...v0.3.0) (2026-09-25)
+
+### Features
+
+* added doctor check and documentation ([fdb2338](https://github.com/lyssar/witness-cli/commit/fdb233878652c6e403e6562acce0d25009745f83))
+
+### Bug Fixes
+
+* preparations for public release ([5f14eca](https://github.com/lyssar/witness-cli/commit/5f14eca7eb170c6a95091ffb3affd96f62501d95))
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
