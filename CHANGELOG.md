@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.1](https://github.com/lyssar/witness-cli/compare/v1.0.0...v1.0.1) (2026-10-07)
+
+### Bug Fixes
+
+* **deps:** update module filippo.io/age to v1.3.2 ([#11](https://github.com/lyssar/witness-cli/issues/11)) ([3439cae](https://github.com/lyssar/witness-cli/commit/3439cae82cca925fcb396a0f681ebd43f3870cfe))
+
 ## 1.0.0 (2026-09-25)
 
 ### Features
