@@ -7,7 +7,7 @@ require (
 	github.com/charmbracelet/fang v0.4.4
 	github.com/charmbracelet/huh v0.8.0
 	github.com/codeglyph/go-dotignore v1.1.1
-	github.com/creasty/defaults v1.8.0
+	github.com/creasty/defaults v1.11.0
 	github.com/iguanesolutions/go-systemd/v5 v5.2.0
 	github.com/kevinburke/ssh_config v1.4.0
 	github.com/lmittmann/tint v1.1.2
