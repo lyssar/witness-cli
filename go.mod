@@ -11,7 +11,7 @@ require (
 	github.com/iguanesolutions/go-systemd/v5 v5.2.0
 	github.com/kevinburke/ssh_config v1.4.0
 	github.com/lmittmann/tint v1.1.2
-	github.com/melbahja/goph v1.4.0
+	github.com/melbahja/goph v1.5.2
 	github.com/spf13/cobra v1.10.1
 	golang.org/x/crypto v0.55.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -55,7 +55,7 @@ require (
 	github.com/muesli/roff v0.1.0 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/pkg/sftp v1.13.5 // indirect
+	github.com/pkg/sftp v1.13.11 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
