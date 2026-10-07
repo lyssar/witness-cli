@@ -12,7 +12,7 @@ require (
 	github.com/kevinburke/ssh_config v1.4.0
 	github.com/lmittmann/tint v1.1.2
 	github.com/melbahja/goph v1.4.0
-	github.com/spf13/cobra v1.10.1
+	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.55.0
 	gopkg.in/yaml.v3 v3.0.1
 )
