@@ -9,7 +9,7 @@ require (
 	github.com/codeglyph/go-dotignore v1.1.1
 	github.com/creasty/defaults v1.8.0
 	github.com/iguanesolutions/go-systemd/v5 v5.2.0
-	github.com/kevinburke/ssh_config v1.4.0
+	github.com/kevinburke/ssh_config v1.6.0
 	github.com/lmittmann/tint v1.1.2
 	github.com/melbahja/goph v1.4.0
 	github.com/spf13/cobra v1.10.1
