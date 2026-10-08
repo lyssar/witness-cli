@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	filippo.io/age v1.3.2
-	github.com/charmbracelet/fang v0.4.4
+	github.com/charmbracelet/fang/v2 v2.0.1
 	github.com/charmbracelet/huh v0.8.0
 	github.com/codeglyph/go-dotignore v1.1.1
 	github.com/creasty/defaults v1.8.0
