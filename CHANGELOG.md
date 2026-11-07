@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.3](https://github.com/lyssar/witness-cli/compare/v1.0.2...v1.0.3) (2026-11-07)
+
+### Bug Fixes
+
+* added fix for user/group enforcement ([0a053c3](https://github.com/lyssar/witness-cli/commit/0a053c3c2e2075d31769c220ea59d01c2b49d402))
+
 ## [1.0.2](https://github.com/lyssar/witness-cli/compare/v1.0.1...v1.0.2) (2026-11-07)
 
 ### Bug Fixes
