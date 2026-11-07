@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.2](https://github.com/lyssar/witness-cli/compare/v1.0.1...v1.0.2) (2026-11-07)
+
+### Bug Fixes
+
+* witness use fixed user and group for app folder ([bdc6973](https://github.com/lyssar/witness-cli/commit/bdc6973d68ee24a5dc90c560df1d24fc16ca2783))
+
 ## [1.0.1](https://github.com/lyssar/witness-cli/compare/v1.0.0...v1.0.1) (2026-10-07)
 
 ### Bug Fixes
