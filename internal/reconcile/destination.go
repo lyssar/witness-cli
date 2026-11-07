@@ -1,19 +1,97 @@
 package reconcile
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/lyssar/witness-cli/internal/application"
 )
 
+const (
+	appDirMode   os.FileMode = 0o750
+	appFileMode  os.FileMode = 0o640
+	appGroupName             = "witness"
+)
+
+var appGroupGIDPath = "/etc/witness/app-group-gid"
+
+var errAppGroupMissing = errors.New("application group gid is unavailable")
+
+var appGroupID = sync.OnceValues(func() (int, error) {
+	return readAppGroupGID(appGroupGIDPath)
+})
+
+func readAppGroupGID(path string) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, fmt.Errorf("%w: read %s: %w", errAppGroupMissing, path, err)
+	}
+	value := strings.TrimSpace(string(data))
+	gid, err := strconv.Atoi(value)
+	if err != nil || gid < 0 {
+		return 0, fmt.Errorf("%w: %s does not hold a numeric gid: %q", errAppGroupMissing, path, value)
+	}
+	return gid, nil
+}
+
+func groupOwnershipBestEffort(err error) bool {
+	return !errors.Is(err, errAppGroupMissing) && errors.Is(err, syscall.EPERM)
+}
+
 // destinationFS confines all destination filesystem access to one os.Root.
 type destinationFS struct {
 	root *os.Root
+}
+
+func liveFileMode(staged os.FileMode) os.FileMode {
+	perm := staged.Perm()
+	if perm&appFileMode == appFileMode {
+		return appFileMode
+	}
+	return perm
+}
+
+func (d *destinationFS) applyAppGroup(ref string) error {
+	gid, err := appGroupID()
+	if err != nil {
+		return err
+	}
+	hostPath := d.absolute(ref)
+	info, err := os.Lstat(hostPath)
+	if err != nil {
+		return err
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok && int(stat.Gid) == gid {
+		return nil
+	}
+	return os.Lchown(hostPath, -1, gid)
+}
+
+func (d *destinationFS) applyAppGroupTree(ref string) error {
+	gid, err := appGroupID()
+	if err != nil {
+		return err
+	}
+	return filepath.Walk(d.absolute(ref), func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok && int(stat.Gid) == gid {
+			return nil
+		}
+		if err := os.Lchown(path, -1, gid); err != nil {
+			return fmt.Errorf("set group %q on %q: %w", appGroupName, path, err)
+		}
+		return nil
+	})
 }
 
 func openDestinationFS(destination string) (*destinationFS, error) {
@@ -143,16 +221,20 @@ func (d *destinationFS) copyExternalTree(source, target string) error {
 			return fmt.Errorf("staging tree contains symlink %q", path)
 		}
 		if info.IsDir() {
-			return d.root.MkdirAll(dst, info.Mode().Perm())
+			if err := d.root.MkdirAll(dst, appDirMode); err != nil {
+				return err
+			}
+			return d.root.Chmod(dst, appDirMode)
 		}
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("staging tree contains unsupported file %q", path)
 		}
+		mode := liveFileMode(info.Mode())
 		in, err := os.Open(path)
 		if err != nil {
 			return err
 		}
-		out, err := d.root.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode().Perm())
+		out, err := d.root.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
 		if err != nil {
 			if closeErr := in.Close(); closeErr != nil {
 				return fmt.Errorf("open rooted destination %q: %w (closing staging source: %v)", dst, err, closeErr)
@@ -167,6 +249,9 @@ func (d *destinationFS) copyExternalTree(source, target string) error {
 		}
 		if closeErr != nil {
 			return closeErr
+		}
+		if chmodErr := d.root.Chmod(dst, mode); chmodErr != nil {
+			return chmodErr
 		}
 		return inCloseErr
 	})

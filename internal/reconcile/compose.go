@@ -223,8 +223,17 @@ func ensureVolumeDirs(d *destinationFS, stage string, composeFiles []string, vol
 			if info, err := d.root.Lstat(dir); err == nil && !info.IsDir() {
 				continue
 			}
-			if err := d.root.MkdirAll(dir, 0o755); err != nil {
+			if err := d.root.MkdirAll(dir, appDirMode); err != nil {
 				return fmt.Errorf("creating volume directory %q: %w", src, err)
+			}
+			if err := d.root.Chmod(dir, appDirMode); err != nil {
+				return fmt.Errorf("setting volume directory mode %q: %w", src, err)
+			}
+			if err := d.applyAppGroup(dir); err != nil {
+				if !groupOwnershipBestEffort(err) {
+					return fmt.Errorf("applying group %q to volume directory %q: %w", appGroupName, src, err)
+				}
+				slog.Warn("Volume directory group not applied", "dir", relDir, "group", appGroupName, "error", err)
 			}
 			if err := applyVolumeClaim(d, claimMap, relDir, dir, src); err != nil {
 				claimErrs = append(claimErrs, err)

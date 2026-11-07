@@ -2,9 +2,12 @@ package reconcile
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"syscall"
 	"testing"
 	"time"
 
@@ -396,5 +399,87 @@ func TestValidateOperationalIDNamespaceRejectsRuntimeSlugCollision(t *testing.T)
 	const want = `runtime slug collision between "a-b/c" and "a/b-c": "a-b-c"`
 	if err.Error() != want {
 		t.Fatalf("collision error = %q, want %q", err, want)
+	}
+}
+
+func TestReadAppGroupGID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content string
+		wantGID int
+		wantErr bool
+	}{
+		{name: "valid gid", content: "989\n", wantGID: 989},
+		{name: "valid gid without newline", content: "1001", wantGID: 1001},
+		{name: "empty file", content: "", wantErr: true},
+		{name: "whitespace only", content: "\n \n", wantErr: true},
+		{name: "not numeric", content: "witness:x:989:\n", wantErr: true},
+		{name: "negative gid", content: "-1\n", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), "app-group-gid")
+			if err := os.WriteFile(path, []byte(tc.content), 0o644); err != nil {
+				t.Fatalf("write gid file: %v", err)
+			}
+
+			gid, err := readAppGroupGID(path)
+			if tc.wantErr {
+				if !errors.Is(err, errAppGroupMissing) {
+					t.Fatalf("error = %v, want application group gid error", err)
+				}
+				if groupOwnershipBestEffort(err) {
+					t.Fatal("a missing gid must abort the rollout")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if gid != tc.wantGID {
+				t.Fatalf("gid = %d, want %d", gid, tc.wantGID)
+			}
+		})
+	}
+}
+
+func TestReadAppGroupGIDRejectsMissingFile(t *testing.T) {
+	t.Parallel()
+
+	_, err := readAppGroupGID(filepath.Join(t.TempDir(), "absent"))
+	if !errors.Is(err, errAppGroupMissing) {
+		t.Fatalf("missing gid file error = %v, want application group gid error", err)
+	}
+	if groupOwnershipBestEffort(err) {
+		t.Fatal("missing gid file must abort the rollout")
+	}
+}
+
+func TestGroupOwnershipBestEffort(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "eperm during lchown stays best effort", err: fmt.Errorf("set group: %w", syscall.EPERM), want: true},
+		{name: "missing gid aborts", err: errAppGroupMissing, want: false},
+		{name: "other ownership failure aborts", err: fmt.Errorf("set group: %w", syscall.ENOENT), want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := groupOwnershipBestEffort(tc.err); got != tc.want {
+				t.Fatalf("groupOwnershipBestEffort(%v) = %t, want %t", tc.err, got, tc.want)
+			}
+		})
 	}
 }

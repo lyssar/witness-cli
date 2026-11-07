@@ -44,6 +44,12 @@ func promoteRootedStagingToLive(destination *destinationFS, app application.Disc
 	if err := destination.copyExternalTree(staging.Root, stage); err != nil {
 		return "", fmt.Errorf("copying staging tree into destination: %w", err)
 	}
+	if err := destination.applyAppGroupTree(stage); err != nil {
+		if !groupOwnershipBestEffort(err) {
+			return "", fmt.Errorf("applying application group ownership: %w", err)
+		}
+		slog.Warn("Application group ownership not applied", "operationalID", app.OperationalID, "group", appGroupName, "error", err)
+	}
 
 	// Always ensure claimed directories exist — covers first deploy and
 	// recovery after manual deletion of volume directories on updates.
@@ -137,9 +143,6 @@ func promoteRootedStagingToLive(destination *destinationFS, app application.Disc
 			)
 		}
 		return "", fmt.Errorf("promoting rooted staging tree: %w", err)
-	}
-	if err := destination.root.Chmod(live, 0o700); err != nil {
-		return "", fmt.Errorf("hardening live app root: %w", err)
 	}
 	if err := destination.root.RemoveAll(backup); err != nil {
 		return "", fmt.Errorf("removing live backup: %w", err)

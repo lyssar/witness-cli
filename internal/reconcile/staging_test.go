@@ -201,9 +201,63 @@ func TestStageRegistryPasswordFailsClosedWhenEncryptedSourceRemovalFails(t *test
 	}
 }
 
-func TestPromoteStagingToLivePreservesSecretModeAndHardensAppRoot(t *testing.T) {
+func TestLiveFileMode(t *testing.T) {
 	t.Parallel()
 
+	tests := []struct {
+		name   string
+		staged os.FileMode
+		want   os.FileMode
+	}{
+		{name: "application file stays at group readable mode", staged: 0o640, want: 0o640},
+		{name: "world readable file is narrowed", staged: 0o644, want: 0o640},
+		{name: "executable file is narrowed", staged: 0o755, want: 0o640},
+		{name: "owner only secret is preserved", staged: 0o600, want: 0o600},
+		{name: "read-only secret is preserved", staged: 0o444, want: 0o444},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := liveFileMode(tc.staged); got != tc.want {
+				t.Fatalf("liveFileMode(%o) = %o, want %o", tc.staged, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPromoteStagingToLiveCreatesVolumeDirsWithAppMode(t *testing.T) {
+	t.Parallel()
+	stagingRoot := t.TempDir()
+	composePath := filepath.Join(stagingRoot, "compose.yaml")
+	compose := "services:\n  app:\n    image: app:latest\n    volumes:\n      - ./data:/data\n"
+	if err := os.WriteFile(composePath, []byte(compose), 0o644); err != nil {
+		t.Fatalf("write compose file: %v", err)
+	}
+
+	app := application.DiscoveredApplication{
+		OperationalID: "hello",
+		Application:   application.Application{Spec: application.Spec{ComposeFiles: []string{"compose.yaml"}}},
+	}
+	liveDir, err := promoteStagingToLive(filepath.Join(t.TempDir(), "apps"), app, AppStaging{Root: stagingRoot})
+	if err != nil {
+		t.Fatalf("promote staging: %v", err)
+	}
+
+	for _, dir := range []string{".", "data"} {
+		info, err := os.Stat(filepath.Join(liveDir, dir))
+		if err != nil {
+			t.Fatalf("stat live dir %q: %v", dir, err)
+		}
+		if got := info.Mode().Perm(); got != appDirMode {
+			t.Fatalf("expected live dir %q mode %o, got %o", dir, appDirMode, got)
+		}
+	}
+}
+
+func TestPromoteStagingToLivePreservesSecretModeAndHardensAppRoot(t *testing.T) {
+	t.Parallel()
 	stagingRoot := t.TempDir()
 	secretPath := filepath.Join(stagingRoot, "secrets", "token")
 	if err := os.MkdirAll(filepath.Dir(secretPath), 0o700); err != nil {
@@ -214,6 +268,13 @@ func TestPromoteStagingToLivePreservesSecretModeAndHardensAppRoot(t *testing.T) 
 	}
 	if err := os.Chmod(secretPath, 0o444); err != nil {
 		t.Fatalf("set secret mode: %v", err)
+	}
+	composePath := filepath.Join(stagingRoot, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatalf("write compose file: %v", err)
+	}
+	if err := os.Chmod(composePath, 0o644); err != nil {
+		t.Fatalf("set compose mode: %v", err)
 	}
 	if err := os.Chmod(stagingRoot, 0o755); err != nil {
 		t.Fatalf("relax staging root for promotion assertion: %v", err)
@@ -228,8 +289,22 @@ func TestPromoteStagingToLivePreservesSecretModeAndHardensAppRoot(t *testing.T) 
 	if err != nil {
 		t.Fatalf("stat live app root: %v", err)
 	}
-	if got := liveInfo.Mode().Perm(); got != 0o700 {
-		t.Fatalf("expected live app root mode 0700, got %o", got)
+	if got := liveInfo.Mode().Perm(); got != 0o750 {
+		t.Fatalf("expected live app root mode 0750, got %o", got)
+	}
+	secretDirInfo, err := os.Stat(filepath.Join(liveDir, "secrets"))
+	if err != nil {
+		t.Fatalf("stat promoted secret dir: %v", err)
+	}
+	if got := secretDirInfo.Mode().Perm(); got != 0o750 {
+		t.Fatalf("expected promoted secret dir mode 0750, got %o", got)
+	}
+	composeInfo, err := os.Stat(filepath.Join(liveDir, "compose.yaml"))
+	if err != nil {
+		t.Fatalf("stat promoted compose file: %v", err)
+	}
+	if got := composeInfo.Mode().Perm(); got != 0o640 {
+		t.Fatalf("expected promoted compose mode 0640, got %o", got)
 	}
 	secretInfo, err := os.Stat(filepath.Join(liveDir, "secrets", "token"))
 	if err != nil {

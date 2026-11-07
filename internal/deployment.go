@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -23,7 +24,11 @@ var (
 	deployProjectNamePattern  = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 )
 
-const deploySudoPasswordEnv = "WITNESS_SUDO_PASSWORD"
+const (
+	deploySudoPasswordEnv = "WITNESS_SUDO_PASSWORD"
+	appGroupName          = "witness"
+	appGroupGIDPath       = "/etc/witness/app-group-gid"
+)
 
 func validateDeploymentInputs(projectName string, username string, destination string) error {
 	if !deployProjectNamePattern.MatchString(strings.ToLower(projectName)) {
@@ -34,6 +39,66 @@ func validateDeploymentInputs(projectName string, username string, destination s
 	}
 	if !path.IsAbs(destination) {
 		return fmt.Errorf("destination path must be absolute: %s", destination)
+	}
+	return nil
+}
+
+func validateAppGroupMembership(group string, deployUser string, groupsOutput string) error {
+	for _, member := range strings.Fields(groupsOutput) {
+		if member == group {
+			return nil
+		}
+	}
+	return fmt.Errorf("deploy user %q is not a member of group %q — add it once with: usermod -aG %s %s", deployUser, group, group, deployUser)
+}
+
+func appGroupMissingError(deployUser string) error {
+	return fmt.Errorf("group %q is missing on target host — create it once with: groupadd %s, then add the deploy user: usermod -aG %s %s", appGroupName, appGroupName, appGroupName, deployUser)
+}
+
+func parseAppGroupGID(getentOutput string) (int, error) {
+	entry := strings.TrimSpace(getentOutput)
+	fields := strings.Split(entry, ":")
+	if len(fields) < 3 {
+		return 0, fmt.Errorf("unexpected group entry %q", entry)
+	}
+	gid, err := strconv.Atoi(fields[2])
+	if err != nil || gid < 0 {
+		return 0, fmt.Errorf("group entry %q does not hold a numeric gid: %q", entry, fields[2])
+	}
+	return gid, nil
+}
+
+func checkAppGroup(runner commandRunner, deployUser string) (int, error) {
+	groupOut, err := runner.Run(fmt.Sprintf("getent group %s", utils.ShellQuote(appGroupName)))
+	if err != nil || strings.TrimSpace(string(groupOut)) == "" {
+		return 0, appGroupMissingError(deployUser)
+	}
+	gid, err := parseAppGroupGID(string(groupOut))
+	if err != nil {
+		return 0, err
+	}
+	memberOut, err := runner.Run(fmt.Sprintf("id -nG %s", utils.ShellQuote(deployUser)))
+	if err != nil {
+		return 0, fmt.Errorf("reading group membership of %q: %w", deployUser, err)
+	}
+	if err := validateAppGroupMembership(appGroupName, deployUser, string(memberOut)); err != nil {
+		return 0, err
+	}
+	return gid, nil
+}
+
+func (dh *DeployHandler) persistAppGroupGID(client *utils.RemoteClient, gid int) error {
+	utils.LogInfo("Persisting application group gid", "group", appGroupName, "gid", gid, "path", appGroupGIDPath)
+	command := fmt.Sprintf(
+		"mkdir -p %s && echo %d > %s && chmod 0644 %s",
+		utils.ShellQuote(filepath.Dir(appGroupGIDPath)),
+		gid,
+		utils.ShellQuote(appGroupGIDPath),
+		utils.ShellQuote(appGroupGIDPath),
+	)
+	if _, err := dh.runSudo(client, command, nil); err != nil {
+		return fmt.Errorf("persisting application group gid at %s: %w", appGroupGIDPath, err)
 	}
 	return nil
 }
@@ -183,6 +248,15 @@ func (dh *DeployHandler) Validate() error {
 		// User exists — ensure docker group membership
 		utils.LogInfo("Adding user to docker group", "user", observer.Metadata.User)
 		_, _ = dh.runSudo(remoteClient, fmt.Sprintf("usermod -aG docker %s", utils.ShellQuote(observer.Metadata.User)), nil)
+	}
+
+	utils.LogInfo("Checking application group", "group", appGroupName, "user", observer.Metadata.User)
+	gid, err := checkAppGroup(remoteClient.SSH, observer.Metadata.User)
+	if err != nil {
+		return err
+	}
+	if err := dh.persistAppGroupGID(remoteClient, gid); err != nil {
+		return err
 	}
 
 	serviceName := strings.ToLower(observer.Metadata.Name)
