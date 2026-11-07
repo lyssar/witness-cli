@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -21,23 +22,24 @@ const (
 	appGroupName             = "witness"
 )
 
-var appGroupGIDPath = "/etc/witness/app-group-gid"
-
 var errAppGroupMissing = errors.New("application group gid is unavailable")
 
+var lookupAppGroup = func() (*user.Group, error) {
+	return user.LookupGroup(appGroupName)
+}
+
 var appGroupID = sync.OnceValues(func() (int, error) {
-	return readAppGroupGID(appGroupGIDPath)
+	return resolveAppGroupID(lookupAppGroup)
 })
 
-func readAppGroupGID(path string) (int, error) {
-	data, err := os.ReadFile(path)
+func resolveAppGroupID(lookup func() (*user.Group, error)) (int, error) {
+	group, err := lookup()
 	if err != nil {
-		return 0, fmt.Errorf("%w: read %s: %w", errAppGroupMissing, path, err)
+		return 0, fmt.Errorf("%w: looking up group %q: %w", errAppGroupMissing, appGroupName, err)
 	}
-	value := strings.TrimSpace(string(data))
-	gid, err := strconv.Atoi(value)
+	gid, err := strconv.Atoi(group.Gid)
 	if err != nil || gid < 0 {
-		return 0, fmt.Errorf("%w: %s does not hold a numeric gid: %q", errAppGroupMissing, path, value)
+		return 0, fmt.Errorf("%w: group %q has non-numeric gid %q", errAppGroupMissing, appGroupName, group.Gid)
 	}
 	return gid, nil
 }

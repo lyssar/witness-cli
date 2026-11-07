@@ -27,7 +27,6 @@ func TestCheckAppGroup(t *testing.T) {
 	tests := []struct {
 		name       string
 		runner     stubCommandRunner
-		wantGID    int
 		wantErrMsg string
 	}{
 		{
@@ -36,7 +35,6 @@ func TestCheckAppGroup(t *testing.T) {
 				groupCommand:   "witness:x:989:\n",
 				membersCommand: "witness adm docker\n",
 			}},
-			wantGID: 989,
 		},
 		{
 			name: "group missing",
@@ -51,13 +49,6 @@ func TestCheckAppGroup(t *testing.T) {
 				groupCommand: "\n",
 			}},
 			wantErrMsg: `group "witness" is missing on target host`,
-		},
-		{
-			name: "group entry without numeric gid",
-			runner: stubCommandRunner{outputs: map[string]string{
-				groupCommand: "witness:x:not-a-gid:\n",
-			}},
-			wantErrMsg: `does not hold a numeric gid`,
 		},
 		{
 			name: "deploy user is not a member",
@@ -79,13 +70,10 @@ func TestCheckAppGroup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gid, err := checkAppGroup(tt.runner, "witness")
+			err := checkAppGroup(tt.runner, "witness")
 			if tt.wantErrMsg == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
-				}
-				if gid != tt.wantGID {
-					t.Fatalf("gid = %d, want %d", gid, tt.wantGID)
 				}
 				return
 			}

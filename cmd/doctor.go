@@ -7,10 +7,14 @@ import (
 
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
-	Short: "Check and install OS/tool prerequisites on a target host",
+	Short: "Check and repair host prerequisites on a target host",
 	Long: `Checks the target host for required tools (git, age, libcap/setcap, docker, docker compose)
 and reports missing ones. Without --check-only, prompts interactively before installing anything.
-With --check-only, prints missing tools and install commands and exits non-zero if any tool is missing.`,
+It then verifies and repairs host state: the witness group, group membership of every service user
+found under /home/*/.config/witness/*/manifest.yaml, the observer config roots (mode 0700, owned by
+the service user), and CAP_CHOWN on the installed witness binary. Repairs run through sudo.
+With --check-only, prints missing tools and the repair commands and exits non-zero if anything is
+missing; it never prompts for a sudo password.`,
 	RunE: internal.DoctorCmd,
 }
 

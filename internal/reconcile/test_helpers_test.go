@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"os"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -10,19 +11,10 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "witness-app-group-gid")
-	if err != nil {
-		panic(err)
+	lookupAppGroup = func() (*user.Group, error) {
+		return &user.Group{Name: appGroupName, Gid: strconv.Itoa(os.Getegid())}, nil
 	}
-	appGroupGIDPath = filepath.Join(dir, "app-group-gid")
-	if err := os.WriteFile(appGroupGIDPath, []byte(strconv.Itoa(os.Getegid())+"\n"), 0o644); err != nil {
-		panic(err)
-	}
-	code := m.Run()
-	if err := os.RemoveAll(dir); err != nil {
-		panic(err)
-	}
-	os.Exit(code)
+	os.Exit(m.Run())
 }
 
 func writeValidAgeKey(t *testing.T, path string) string {

@@ -7,11 +7,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/lyssar/witness-cli/utils"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 type OSFamily string
@@ -115,6 +118,38 @@ func dockerRHELInstallCmd(pkgMgr string, osInfo OSInfo) string {
 		fmt.Sprintf("%s install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin", pkgMgr),
 	)
 	return strings.Join(cmds, " && ")
+}
+
+type hostFixStatus string
+
+const (
+	hostFixOK       hostFixStatus = "OK"
+	hostFixRepaired hostFixStatus = "REPAIRED"
+	hostFixSkipped  hostFixStatus = "SKIP"
+	hostFixFailed   hostFixStatus = "FAILED"
+)
+
+const (
+	defaultServiceUser   = "witness"
+	observerConfigMode   = "700"
+	binaryCapability     = "cap_chown+ep"
+	installedBinaryPath  = "/usr/local/bin/witness"
+	observerDiscoveryCmd = "find /home -maxdepth 5 -type f -path '*/.config/witness/*/manifest.yaml' -print0 2>/dev/null || true"
+)
+
+type observerConfig struct {
+	Root string
+	User string
+}
+
+type observerManifest struct {
+	Metadata struct {
+		User *string `yaml:"user"`
+	} `yaml:"metadata"`
+}
+
+func logHostFix(status hostFixStatus, subject string, args ...any) {
+	slog.Info(fmt.Sprintf("%s %s", status, subject), args...)
 }
 
 type commandRunner interface {
@@ -232,16 +267,421 @@ func (dh *DoctorHandler) Run() error {
 		}
 	}
 
-	if len(missing) == 0 {
-		utils.LogSuccess("All prerequisites satisfied")
+	var prereqErr error
+	if len(missing) > 0 {
+		if dh.CheckOnly {
+			prereqErr = dh.reportMissing(missing)
+		} else {
+			prereqErr = dh.installMissing(missing)
+		}
+	}
+
+	hostErr := dh.applyHostFixes()
+	if err := errors.Join(prereqErr, hostErr); err != nil {
+		return err
+	}
+
+	utils.LogSuccess("All prerequisites satisfied")
+	return nil
+}
+
+func (dh *DoctorHandler) applyHostFixes() error {
+	configs, discoveryErr := dh.discoverObserverConfigs()
+	users := serviceUsers(configs)
+	if len(users) == 0 {
+		users = []string{defaultServiceUser}
+	}
+
+	var errs []error
+	if discoveryErr != nil {
+		errs = append(errs, discoveryErr)
+	}
+	if err := dh.fixAppGroup(); err != nil {
+		errs = append(errs, err)
+	}
+	for _, user := range users {
+		if err := dh.fixGroupMembership(user); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	for _, cfg := range configs {
+		if err := dh.fixObserverConfigRoot(cfg); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if err := dh.fixBinaryCapability(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
+func (dh *DoctorHandler) runRead(command string) ([]byte, error) {
+	if dh.CheckOnly {
+		if dh.Local {
+			return runLocalSudo(command, "")
+		}
+		return dh.client.RunSudo(command, "", nil)
+	}
+	return dh.runSudo(command)
+}
+
+func (dh *DoctorHandler) discoverObserverConfigs() ([]observerConfig, error) {
+	out, err := dh.runRead(observerDiscoveryCmd)
+	if err != nil {
+		logHostFix(hostFixFailed, "observer config discovery", "error", err.Error())
+		return nil, fmt.Errorf("discovering observer configs: %w", err)
+	}
+
+	configs := []observerConfig{}
+	var errs []error
+	for _, manifestPath := range parseManifestPaths(string(out)) {
+		root := filepath.Dir(manifestPath)
+		pathOwner, ok := parseObserverConfigRoot(root)
+		if !ok {
+			logHostFix(hostFixFailed, fmt.Sprintf("observer config root %q", root), "reason", "path does not match /home/<user>/.config/witness/<app>")
+			errs = append(errs, fmt.Errorf("rejecting observer config root %q: path does not match /home/<user>/.config/witness/<app>", root))
+			continue
+		}
+		content, readErr := dh.runRead("cat " + utils.ShellQuote(manifestPath))
+		if readErr != nil {
+			logHostFix(hostFixFailed, fmt.Sprintf("observer manifest %q", manifestPath), "error", readErr.Error())
+			errs = append(errs, fmt.Errorf("reading observer manifest %q: %w", manifestPath, readErr))
+			continue
+		}
+		manifestUser, parseErr := parseObserverManifestUser(content)
+		if parseErr != nil {
+			logHostFix(hostFixFailed, fmt.Sprintf("observer manifest %q", manifestPath), "error", parseErr.Error())
+			errs = append(errs, parseErr)
+			continue
+		}
+		user, ok := observerUserForConfigRoot(pathOwner, manifestUser)
+		if !ok {
+			logHostFix(hostFixFailed, fmt.Sprintf("observer config root %q", root), "reason", "metadata.user does not match path owner")
+			errs = append(errs, fmt.Errorf("rejecting observer config root %q: metadata.user %q does not match path owner %q", root, manifestUser, pathOwner))
+			continue
+		}
+		configs = append(configs, observerConfig{Root: root, User: user})
+	}
+	return configs, errors.Join(errs...)
+}
+
+func (dh *DoctorHandler) fixAppGroup() error {
+	subject := fmt.Sprintf("group %q", appGroupName)
+	out, err := dh.runner.Run(fmt.Sprintf("getent group %s", utils.ShellQuote(appGroupName)))
+	if err == nil && strings.TrimSpace(string(out)) != "" {
+		logHostFix(hostFixOK, subject)
 		return nil
 	}
 
+	command := fmt.Sprintf("groupadd --system %s", utils.ShellQuote(appGroupName))
 	if dh.CheckOnly {
-		return dh.reportMissing(missing)
+		logHostFix(hostFixFailed, subject, "command", command)
+		return fmt.Errorf("group %q is missing: run %s", appGroupName, command)
 	}
 
-	return dh.installMissing(missing)
+	out, err = dh.runSudo(command)
+	if err != nil {
+		logHostFix(hostFixFailed, subject, "command", command)
+		return fmt.Errorf("creating group %q: %w (%s)", appGroupName, err, strings.TrimSpace(string(out)))
+	}
+
+	out, err = dh.runner.Run(fmt.Sprintf("getent group %s", utils.ShellQuote(appGroupName)))
+	if err != nil || strings.TrimSpace(string(out)) == "" {
+		logHostFix(hostFixFailed, subject, "command", command)
+		return fmt.Errorf("group %q is still missing after %s", appGroupName, command)
+	}
+	logHostFix(hostFixRepaired, subject, "command", command)
+	return nil
+}
+
+func (dh *DoctorHandler) fixGroupMembership(user string) error {
+	subject := fmt.Sprintf("group membership of %q in %q", user, appGroupName)
+	passwd, err := dh.runner.Run(fmt.Sprintf("getent passwd %s", utils.ShellQuote(user)))
+	if err != nil || strings.TrimSpace(string(passwd)) == "" {
+		logHostFix(hostFixSkipped, subject, "reason", "service user does not exist yet")
+		return nil
+	}
+
+	groups, err := dh.runner.Run(fmt.Sprintf("id -nG %s", utils.ShellQuote(user)))
+	if err != nil {
+		logHostFix(hostFixFailed, subject, "error", err.Error())
+		return fmt.Errorf("reading group membership of %q: %w", user, err)
+	}
+	if validateAppGroupMembership(appGroupName, user, string(groups)) == nil {
+		logHostFix(hostFixOK, subject)
+		return nil
+	}
+
+	command := fmt.Sprintf("usermod -aG %s %s", utils.ShellQuote(appGroupName), utils.ShellQuote(user))
+	if dh.CheckOnly {
+		logHostFix(hostFixFailed, subject, "command", command)
+		return fmt.Errorf("user %q is not a member of group %q: run %s", user, appGroupName, command)
+	}
+
+	if out, err := dh.runSudo(command); err != nil {
+		logHostFix(hostFixFailed, subject, "command", command)
+		return fmt.Errorf("adding %q to group %q: %w (%s)", user, appGroupName, err, strings.TrimSpace(string(out)))
+	}
+
+	groups, err = dh.runner.Run(fmt.Sprintf("id -nG %s", utils.ShellQuote(user)))
+	if err != nil || validateAppGroupMembership(appGroupName, user, string(groups)) != nil {
+		logHostFix(hostFixFailed, subject, "command", command)
+		return fmt.Errorf("user %q is still not a member of group %q after %s", user, appGroupName, command)
+	}
+	logHostFix(hostFixRepaired, subject, "command", command)
+	return nil
+}
+
+func (dh *DoctorHandler) fixObserverConfigRoot(cfg observerConfig) error {
+	subject := fmt.Sprintf("config root %q", cfg.Root)
+	command := observerConfigRootGuard(cfg.Root) + fmt.Sprintf("install -d -m %s -o %s -g %s %s",
+		observerConfigMode,
+		utils.ShellQuote(cfg.User),
+		utils.ShellQuote(cfg.User),
+		utils.ShellQuote(cfg.Root),
+	)
+
+	matches, statErr := dh.observerConfigRootStatus(cfg)
+	if statErr == nil && matches {
+		logHostFix(hostFixOK, subject)
+		return nil
+	}
+	if dh.CheckOnly {
+		if statErr != nil {
+			logHostFix(hostFixFailed, subject, "error", statErr.Error())
+			return fmt.Errorf("inspecting config root %q: %w", cfg.Root, statErr)
+		}
+		logHostFix(hostFixFailed, subject, "command", command)
+		return fmt.Errorf("config root %q does not match mode %s and owner %q: run %s", cfg.Root, observerConfigMode, cfg.User, command)
+	}
+
+	if out, err := dh.runSudo(command); err != nil {
+		logHostFix(hostFixFailed, subject, "command", command)
+		return fmt.Errorf("repairing config root %q: %w (%s)", cfg.Root, err, strings.TrimSpace(string(out)))
+	}
+	if matches, statErr = dh.observerConfigRootStatus(cfg); statErr != nil || !matches {
+		logHostFix(hostFixFailed, subject, "command", command)
+		return fmt.Errorf("config root %q still does not match mode %s and owner %q after %s", cfg.Root, observerConfigMode, cfg.User, command)
+	}
+	logHostFix(hostFixRepaired, subject, "command", command)
+	return nil
+}
+
+func observerConfigRootGuard(root string) string {
+	clean := filepath.Clean(root)
+	parts := strings.Split(clean, "/")
+	checks := []string{}
+	current := ""
+	for i := 1; i < len(parts)-1; i++ {
+		current += "/" + parts[i]
+		quoted := utils.ShellQuote(current)
+		checks = append(checks, "test -d "+quoted+" && test ! -L "+quoted)
+	}
+	quotedRoot := utils.ShellQuote(clean)
+	checks = append(checks, "( if test -e "+quotedRoot+" || test -L "+quotedRoot+"; then test -d "+quotedRoot+" && test ! -L "+quotedRoot+"; fi )")
+	return "set -e; " + strings.Join(checks, " && ") + "; "
+}
+
+func (dh *DoctorHandler) observerConfigRootStatus(cfg observerConfig) (bool, error) {
+	out, err := dh.runRead(observerConfigRootGuard(cfg.Root) + "stat -c '%a %U' " + utils.ShellQuote(cfg.Root))
+	if err != nil {
+		return false, err
+	}
+	return configRootMatches(out, cfg.User), nil
+}
+
+func configRootMatches(statOutput []byte, user string) bool {
+	mode, owner := parseStatModeOwner(string(statOutput))
+	return mode == observerConfigMode && owner == user
+}
+
+func (dh *DoctorHandler) fixBinaryCapability() error {
+	binaryPath, err := dh.witnessBinaryPath()
+	if err != nil {
+		logHostFix(hostFixFailed, "binary capability", "error", err.Error())
+		return err
+	}
+	if binaryPath == "" {
+		logHostFix(hostFixSkipped, "binary capability", "reason", "witness binary is not installed yet")
+		return nil
+	}
+
+	subject := fmt.Sprintf("binary capability %q on %q", binaryCapability, binaryPath)
+	statOut, err := dh.runRead("stat -c '%a %U %F' " + utils.ShellQuote(binaryPath))
+	if err != nil {
+		logHostFix(hostFixFailed, subject, "error", err.Error())
+		return fmt.Errorf("inspecting binary %q: %w", binaryPath, err)
+	}
+	if !binaryPathSafe(string(statOut)) {
+		logHostFix(hostFixFailed, subject, "reason", "binary must be a regular root-owned file without group or world write permission")
+		return fmt.Errorf("binary %q must be a regular root-owned file without group or world write permission", binaryPath)
+	}
+
+	getcap := dh.resolveTool("getcap")
+	if getcap == "" {
+		logHostFix(hostFixSkipped, subject, "reason", "getcap is unavailable")
+		return nil
+	}
+	out, err := dh.runner.Run(fmt.Sprintf("%s %s", getcap, utils.ShellQuote(binaryPath)))
+	if err == nil && hasBinaryCapability(string(out)) {
+		logHostFix(hostFixOK, subject)
+		return nil
+	}
+
+	setcap := dh.resolveTool("setcap")
+	if setcap == "" {
+		logHostFix(hostFixFailed, subject, "reason", "setcap is unavailable")
+		return fmt.Errorf("setcap is unavailable; install libcap and rerun witness doctor")
+	}
+	command := fmt.Sprintf("%s %s %s", setcap, binaryCapability, utils.ShellQuote(binaryPath))
+	if dh.CheckOnly {
+		logHostFix(hostFixFailed, subject, "command", command)
+		return fmt.Errorf("binary %q lacks %s: run %s", binaryPath, binaryCapability, command)
+	}
+
+	if out, err := dh.runSudo(command); err != nil {
+		logHostFix(hostFixFailed, subject, "command", command)
+		return fmt.Errorf("setting capabilities on %q: %w (%s)", binaryPath, err, strings.TrimSpace(string(out)))
+	}
+
+	out, err = dh.runner.Run(fmt.Sprintf("%s %s", getcap, utils.ShellQuote(binaryPath)))
+	if err != nil || !hasBinaryCapability(string(out)) {
+		logHostFix(hostFixFailed, subject, "command", command)
+		return fmt.Errorf("binary %q still lacks %s after %s", binaryPath, binaryCapability, command)
+	}
+	logHostFix(hostFixRepaired, subject, "command", command)
+	return nil
+}
+
+func (dh *DoctorHandler) witnessBinaryPath() (string, error) {
+	quoted := utils.ShellQuote(installedBinaryPath)
+	out, err := dh.runRead("test -e " + quoted + " && echo " + quoted + " || true")
+	if err != nil {
+		return "", fmt.Errorf("inspecting witness binary %q: %w", installedBinaryPath, err)
+	}
+	if strings.TrimSpace(string(out)) == "" {
+		return "", nil
+	}
+	return installedBinaryPath, nil
+}
+
+func binaryPathSafe(statOutput string) bool {
+	fields := strings.Fields(statOutput)
+	if len(fields) < 3 {
+		return false
+	}
+	mode, err := strconv.ParseUint(fields[0], 8, 32)
+	if err != nil || mode&0o022 != 0 {
+		return false
+	}
+	if fields[1] != "root" {
+		return false
+	}
+	fileType := strings.Join(fields[2:], " ")
+	return fileType == "regular file" || fileType == "regular empty file"
+}
+
+func (dh *DoctorHandler) resolveTool(name string) string {
+	for _, candidate := range []string{"/sbin/" + name, "/usr/sbin/" + name} {
+		quoted := utils.ShellQuote(candidate)
+		out, err := dh.runner.Run("test -x " + quoted + " && echo " + quoted + " || true")
+		if err == nil && strings.TrimSpace(string(out)) != "" {
+			return quoted
+		}
+	}
+	return ""
+}
+
+func parseManifestPaths(output string) []string {
+	paths := []string{}
+	for _, path := range strings.Split(output, "\x00") {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		paths = append(paths, path)
+	}
+	return paths
+}
+
+func parseObserverConfigRoot(root string) (string, bool) {
+	parts := strings.Split(filepath.Clean(root), "/")
+	if len(parts) != 6 || parts[0] != "" || parts[1] != "home" || parts[3] != ".config" || parts[4] != utils.APP_NAME {
+		return "", false
+	}
+	user, app := parts[2], parts[5]
+	if !deployUnixUsernamePattern.MatchString(user) || !deployProjectNamePattern.MatchString(app) {
+		return "", false
+	}
+	return user, true
+}
+
+func observerUserForConfigRoot(pathOwner string, manifestUser string) (string, bool) {
+	manifestUser = strings.TrimSpace(manifestUser)
+	if pathOwner == "" {
+		return "", false
+	}
+	if manifestUser == "" || manifestUser == pathOwner {
+		return pathOwner, true
+	}
+	return "", false
+}
+
+func parseObserverManifestUser(content []byte) (string, error) {
+	manifest := observerManifest{}
+	if err := yaml.Unmarshal(content, &manifest); err != nil {
+		return "", fmt.Errorf("parsing observer manifest: %w", err)
+	}
+	if manifest.Metadata.User == nil {
+		return "", nil
+	}
+	return strings.TrimSpace(*manifest.Metadata.User), nil
+}
+
+func parseStatModeOwner(output string) (string, string) {
+	fields := strings.Fields(output)
+	if len(fields) < 2 {
+		return "", ""
+	}
+	return fields[0], fields[1]
+}
+
+func hasBinaryCapability(output string) bool {
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		for _, group := range fields[1:] {
+			capabilities, flags, ok := strings.Cut(group, "=")
+			if !ok {
+				continue
+			}
+			for _, capability := range strings.Split(capabilities, ",") {
+				if capability == "cap_chown" {
+					return flags == "ep"
+				}
+			}
+		}
+	}
+	return false
+}
+
+func serviceUsers(configs []observerConfig) []string {
+	seen := map[string]struct{}{}
+	users := []string{}
+	for _, cfg := range configs {
+		if cfg.User == "" {
+			continue
+		}
+		if _, ok := seen[cfg.User]; ok {
+			continue
+		}
+		seen[cfg.User] = struct{}{}
+		users = append(users, cfg.User)
+	}
+	sort.Strings(users)
+	return users
 }
 
 func (dh *DoctorHandler) detectOS() (OSInfo, error) {

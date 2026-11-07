@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"reflect"
 	"syscall"
@@ -402,39 +403,56 @@ func TestValidateOperationalIDNamespaceRejectsRuntimeSlugCollision(t *testing.T)
 	}
 }
 
-func TestReadAppGroupGID(t *testing.T) {
+func TestResolveAppGroupID(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name    string
-		content string
+		lookup  func() (*user.Group, error)
 		wantGID int
 		wantErr bool
 	}{
-		{name: "valid gid", content: "989\n", wantGID: 989},
-		{name: "valid gid without newline", content: "1001", wantGID: 1001},
-		{name: "empty file", content: "", wantErr: true},
-		{name: "whitespace only", content: "\n \n", wantErr: true},
-		{name: "not numeric", content: "witness:x:989:\n", wantErr: true},
-		{name: "negative gid", content: "-1\n", wantErr: true},
+		{
+			name: "group found",
+			lookup: func() (*user.Group, error) {
+				return &user.Group{Name: appGroupName, Gid: "989"}, nil
+			},
+			wantGID: 989,
+		},
+		{
+			name: "group missing",
+			lookup: func() (*user.Group, error) {
+				return nil, user.UnknownGroupError(appGroupName)
+			},
+			wantErr: true,
+		},
+		{
+			name: "gid not numeric",
+			lookup: func() (*user.Group, error) {
+				return &user.Group{Name: appGroupName, Gid: "witness"}, nil
+			},
+			wantErr: true,
+		},
+		{
+			name: "negative gid",
+			lookup: func() (*user.Group, error) {
+				return &user.Group{Name: appGroupName, Gid: "-1"}, nil
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			path := filepath.Join(t.TempDir(), "app-group-gid")
-			if err := os.WriteFile(path, []byte(tc.content), 0o644); err != nil {
-				t.Fatalf("write gid file: %v", err)
-			}
-
-			gid, err := readAppGroupGID(path)
+			gid, err := resolveAppGroupID(tc.lookup)
 			if tc.wantErr {
 				if !errors.Is(err, errAppGroupMissing) {
 					t.Fatalf("error = %v, want application group gid error", err)
 				}
 				if groupOwnershipBestEffort(err) {
-					t.Fatal("a missing gid must abort the rollout")
+					t.Fatal("an unavailable gid must abort the rollout")
 				}
 				return
 			}
@@ -445,18 +463,6 @@ func TestReadAppGroupGID(t *testing.T) {
 				t.Fatalf("gid = %d, want %d", gid, tc.wantGID)
 			}
 		})
-	}
-}
-
-func TestReadAppGroupGIDRejectsMissingFile(t *testing.T) {
-	t.Parallel()
-
-	_, err := readAppGroupGID(filepath.Join(t.TempDir(), "absent"))
-	if !errors.Is(err, errAppGroupMissing) {
-		t.Fatalf("missing gid file error = %v, want application group gid error", err)
-	}
-	if groupOwnershipBestEffort(err) {
-		t.Fatal("missing gid file must abort the rollout")
 	}
 }
 
